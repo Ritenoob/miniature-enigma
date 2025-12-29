@@ -1,0 +1,37 @@
+{
+  "name": "kucoin-futures-dashboard",
+  "version": "3.5.0",
+  "description": "KuCoin Perpetual Futures Semi-Automated Trading Dashboard with V3.5 Enhancements",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "kucoin",
+    "futures",
+    "trading",
+    "dashboard",
+    "cryptocurrency",
+    "signals",
+    "trailing-stop",
+    "break-even",
+    "leverage"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "dotenv": "^16.6.1",
+    "events": "^3.3.0",
+    "express": "^4.22.1",
+    "fs": "^0.0.1-security",
+    "http": "^0.0.1-security",
+    "https": "^1.0.0",
+    "path": "^0.12.7",
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

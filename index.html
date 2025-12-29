@@ -1,0 +1,3047 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  KuCoin Futures Dashboard V3.5.0
+  ENHANCEMENTS:
+  - Fee-adjusted break-even calculation
+  - Accurate liquidation price formula
+  - Slippage buffer on stop orders
+  - API retry queue visualization
+  - ROI-based SL/TP (inverse leverage scaling)
+  - Volatility-based auto-leverage
+  - Enhanced trailing stop algorithms (Staircase, ATR, Dynamic)
+  - Net P&L after fees display
+  - Partial take-profit support
+-->
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KuCoin Futures Dashboard v3.5</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-secondary: #111827;
+      --bg-tertiary: #1a2235;
+      --bg-card: #151d2e;
+      --bg-hover: #1e293b;
+      --accent-green: #00ff88;
+      --accent-red: #ff4757;
+      --accent-blue: #3b82f6;
+      --accent-yellow: #fbbf24;
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #22d3ee;
+      --accent-orange: #f97316;
+      --accent-pink: #ec4899;
+      --text-primary: #ffffff;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border-color: #1e293b;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-icon {
+      width: 45px;
+      height: 45px;
+      background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent-green), var(--accent-blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .version-badge {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      color: var(--accent-cyan);
+      margin-left: 0.5rem;
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .stat-box {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .stat-value.positive { color: var(--accent-green); }
+    .stat-value.negative { color: var(--accent-red); }
+
+    .stat-sub {
+      font-size: 0.7rem;
+      color: var(--accent-cyan);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-tertiary);
+      border-radius: 20px;
+      font-size: 0.85rem;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .status-dot.disconnected {
+      background: var(--accent-red);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(0.9); }
+    }
+
+    /* Controls Bar */
+    .controls {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem 2rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .control-label {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    select, input[type="text"], input[type="number"] {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:focus, input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    button {
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border: none;
+      color: var(--text-primary);
+      padding: 0.5rem 1.25rem;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.danger {
+      background: linear-gradient(135deg, #dc2626, var(--accent-red));
+    }
+
+    button.success {
+      background: linear-gradient(135deg, #059669, var(--accent-green));
+    }
+
+    /* Main Layout */
+    .main-container {
+      display: grid;
+      grid-template-columns: 300px 1fr 380px;
+      gap: 1rem;
+      padding: 1rem 2rem;
+      min-height: calc(100vh - 140px);
+    }
+
+    @media (max-width: 1400px) {
+      .main-container {
+        grid-template-columns: 280px 1fr 340px;
+      }
+    }
+
+    @media (max-width: 1200px) {
+      .main-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 1rem 1.25rem;
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header .badge {
+      background: var(--bg-primary);
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .panel-header .badge.cyan {
+      background: rgba(34, 211, 238, 0.15);
+      color: var(--accent-cyan);
+    }
+
+    /* Symbol List */
+    .symbol-list {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .symbol-item {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+
+    .symbol-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .symbol-item.active {
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 3px solid var(--accent-blue);
+    }
+
+    .symbol-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .symbol-name {
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+    }
+
+    .symbol-price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+    }
+
+    .symbol-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.25rem;
+    }
+
+    .symbol-change {
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .symbol-change.positive { color: var(--accent-green); }
+    .symbol-change.negative { color: var(--accent-red); }
+
+    .signal-badge {
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .signal-badge.strong_buy, .signal-badge.buy {
+      background: rgba(0, 255, 136, 0.2);
+      color: var(--accent-green);
+    }
+
+    .signal-badge.strong_sell, .signal-badge.sell {
+      background: rgba(255, 71, 87, 0.2);
+      color: var(--accent-red);
+    }
+
+    .signal-badge.neutral {
+      background: rgba(148, 163, 184, 0.2);
+      color: var(--text-secondary);
+    }
+
+    /* Dashboard Center */
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* Price Display */
+    .price-display {
+      padding: 1.5rem;
+    }
+
+    .price-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+
+    .active-symbol {
+      font-size: 1.75rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .current-price {
+      font-size: 3.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+    }
+
+    .price-change-badge {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .price-change-badge.positive {
+      background: rgba(0, 255, 136, 0.15);
+      color: var(--accent-green);
+    }
+
+    .price-change-badge.negative {
+      background: rgba(255, 71, 87, 0.15);
+      color: var(--accent-red);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    .stat-card {
+      background: var(--bg-tertiary);
+      padding: 1rem;
+      border-radius: 8px;
+    }
+
+    .stat-card-label {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      margin-bottom: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    /* Signal Panel */
+    .signal-panel {
+      padding: 1.5rem;
+    }
+
+    .signal-result {
+      text-align: center;
+      padding: 1.5rem;
+      background: var(--bg-tertiary);
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+    }
+
+    .signal-type {
+      font-size: 2rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 0.5rem;
+    }
+
+    .signal-type.strong_buy, .signal-type.buy {
+      color: var(--accent-green);
+      text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+    }
+
+    .signal-type.strong_sell, .signal-type.sell {
+      color: var(--accent-red);
+      text-shadow: 0 0 30px rgba(255, 71, 87, 0.5);
+    }
+
+    .signal-type.neutral {
+      color: var(--text-secondary);
+    }
+
+    .signal-score {
+      font-size: 3.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      margin: 0.5rem 0;
+    }
+
+    .signal-meter {
+      width: 100%;
+      height: 12px;
+      background: linear-gradient(90deg, var(--accent-red) 0%, var(--text-muted) 50%, var(--accent-green) 100%);
+      border-radius: 6px;
+      position: relative;
+      margin: 1rem 0;
+    }
+
+    .signal-meter-pointer {
+      position: absolute;
+      top: -4px;
+      width: 4px;
+      height: 20px;
+      background: var(--text-primary);
+      border-radius: 2px;
+      transform: translateX(-50%);
+      transition: left 0.5s ease;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    }
+
+    .signal-meter-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    .confidence-badge {
+      display: inline-block;
+      padding: 0.5rem 1.25rem;
+      border-radius: 20px;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+
+    .confidence-badge.high {
+      background: rgba(0, 255, 136, 0.2);
+      color: var(--accent-green);
+    }
+
+    .confidence-badge.medium {
+      background: rgba(251, 191, 36, 0.2);
+      color: var(--accent-yellow);
+    }
+
+    .confidence-badge.low {
+      background: rgba(148, 163, 184, 0.2);
+      color: var(--text-secondary);
+    }
+
+    /* Indicator Breakdown */
+    .indicator-breakdown {
+      margin-top: 1rem;
+    }
+
+    .breakdown-title {
+      font-weight: 600;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .breakdown-item {
+      display: grid;
+      grid-template-columns: 100px 1fr 60px;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .breakdown-indicator {
+      font-weight: 600;
+    }
+
+    .breakdown-reason {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .breakdown-contribution {
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+    }
+
+    .breakdown-contribution.positive { color: var(--accent-green); }
+    .breakdown-contribution.negative { color: var(--accent-red); }
+
+    /* Order Book */
+    .orderbook-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .orderbook-side {
+      padding: 0.5rem;
+    }
+
+    .orderbook-title {
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .orderbook-title.bids { color: var(--accent-green); }
+    .orderbook-title.asks { color: var(--accent-red); }
+
+    .orderbook-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.3rem 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      position: relative;
+      border-radius: 4px;
+      margin-bottom: 2px;
+    }
+
+    .orderbook-row.highlight {
+      background: rgba(251, 191, 36, 0.2) !important;
+      border: 1px solid var(--accent-yellow);
+    }
+
+    .orderbook-row .depth-bar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      opacity: 0.15;
+      border-radius: 4px;
+    }
+
+    .orderbook-row.bid .depth-bar {
+      right: 0;
+      background: var(--accent-green);
+    }
+
+    .orderbook-row.ask .depth-bar {
+      left: 0;
+      background: var(--accent-red);
+    }
+
+    .ob-price { position: relative; z-index: 1; }
+    .ob-price.bid { color: var(--accent-green); }
+    .ob-price.ask { color: var(--accent-red); }
+    .ob-size { color: var(--text-secondary); position: relative; z-index: 1; }
+
+    /* Right Panel - Trade & Positions */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .indicators-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      padding: 1rem;
+    }
+
+    .indicator-card {
+      background: var(--bg-tertiary);
+      padding: 0.75rem;
+      border-radius: 8px;
+      border-left: 3px solid transparent;
+    }
+
+    .indicator-card.bullish { border-left-color: var(--accent-green); }
+    .indicator-card.bearish { border-left-color: var(--accent-red); }
+    .indicator-card.neutral { border-left-color: var(--text-muted); }
+
+    .indicator-card-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+      text-transform: uppercase;
+    }
+
+    .indicator-card-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .indicator-card-value.bullish { color: var(--accent-green); }
+    .indicator-card-value.bearish { color: var(--accent-red); }
+
+    /* Trade Panel */
+    .trade-panel {
+      padding: 1rem;
+    }
+
+    .trade-settings {
+      margin-bottom: 1rem;
+    }
+
+    .trade-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .trade-btn {
+      padding: 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .trade-btn.long {
+      background: linear-gradient(135deg, #059669, var(--accent-green));
+    }
+
+    .trade-btn.short {
+      background: linear-gradient(135deg, #dc2626, var(--accent-red));
+    }
+
+    .trade-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .trade-input {
+      margin-bottom: 1rem;
+    }
+
+    .trade-input label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .trade-input input,
+    .trade-input select {
+      width: 100%;
+    }
+
+    /* Enhanced Leverage Section */
+    .leverage-section {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .leverage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .leverage-header label {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin: 0;
+    }
+
+    .leverage-mode-toggle {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .mode-btn {
+      padding: 0.25rem 0.75rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mode-btn:first-child {
+      border-radius: 4px 0 0 4px;
+    }
+
+    .mode-btn:last-child {
+      border-radius: 0 4px 4px 0;
+    }
+
+    .mode-btn.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: white;
+    }
+
+    .mode-btn:hover:not(.active) {
+      background: var(--bg-hover);
+    }
+
+    .leverage-panel {
+      padding: 0.75rem 0;
+    }
+
+    .auto-leverage-display {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+    }
+
+    .auto-leverage-label {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .auto-leverage-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+
+    .auto-leverage-info {
+      text-align: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .auto-leverage-info small {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    /* Volatility Indicator */
+    .volatility-indicator {
+      margin: 0.75rem 0;
+      padding: 0.5rem;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+    }
+
+    .volatility-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      font-size: 0.75rem;
+    }
+
+    .volatility-label span:first-child {
+      color: var(--text-muted);
+    }
+
+    .volatility-value {
+      color: var(--accent-yellow);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    .volatility-bar {
+      height: 8px;
+      background: linear-gradient(90deg, #10b981 0%, #fbbf24 50%, #ef4444 100%);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .volatility-marker {
+      position: absolute;
+      top: -3px;
+      width: 4px;
+      height: 14px;
+      background: white;
+      border-radius: 2px;
+      transform: translateX(-50%);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+      transition: left 0.3s ease;
+    }
+
+    .volatility-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .leverage-slider-container {
+      padding: 0.5rem 0;
+    }
+
+    .leverage-slider-container label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    #risk-multiplier-slider {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: linear-gradient(to right, #10b981, #f59e0b, #ef4444);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    #risk-multiplier-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: white;
+      border: 2px solid var(--accent-blue);
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    #leverage-manual-panel select {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+    }
+
+    .manual-leverage-warning {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .manual-leverage-warning small {
+      color: #ef4444;
+    }
+
+    .effective-leverage {
+      text-align: center;
+      padding: 0.5rem;
+      border-top: 1px solid var(--border-color);
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .effective-leverage strong {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      color: var(--accent-cyan);
+    }
+
+    /* Trade Info Panel - V3.5 Enhanced */
+    .trade-info {
+      background: var(--bg-tertiary);
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+    }
+
+    .trade-info-section {
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .trade-info-section:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .trade-info-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .trade-info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+      font-size: 0.85rem;
+    }
+
+    .trade-info-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .trade-info-label {
+      color: var(--text-secondary);
+    }
+
+    .trade-info-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .trade-info-value.positive { color: var(--accent-green); }
+    .trade-info-value.negative { color: var(--accent-red); }
+    .trade-info-value.warning { color: var(--accent-orange); }
+    .trade-info-value.cyan { color: var(--accent-cyan); }
+    .trade-info-value.purple { color: var(--accent-purple); }
+
+    /* Positions Panel */
+    .positions-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .position-item {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .position-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .position-symbol {
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .position-side {
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .position-side.long {
+      background: rgba(0, 255, 136, 0.2);
+      color: var(--accent-green);
+    }
+
+    .position-side.short {
+      background: rgba(255, 71, 87, 0.2);
+      color: var(--accent-red);
+    }
+
+    /* Position P&L Display - V3.5 Enhanced */
+    .position-pnl-container {
+      margin-bottom: 0.75rem;
+    }
+
+    .position-pnl {
+      font-size: 1.1rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: center;
+      padding: 0.5rem;
+      border-radius: 6px;
+    }
+
+    .position-pnl.positive {
+      background: rgba(0, 255, 136, 0.15);
+      color: var(--accent-green);
+    }
+
+    .position-pnl.negative {
+      background: rgba(255, 71, 87, 0.15);
+      color: var(--accent-red);
+    }
+
+    .position-net-pnl {
+      text-align: center;
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+      color: var(--accent-cyan);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Position Status Badges */
+    .position-badges {
+      display: flex;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+      flex-wrap: wrap;
+    }
+
+    .position-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .position-badge.break-even {
+      background: linear-gradient(135deg, var(--accent-green), #00cc70);
+      color: white;
+      animation: badgePulse 2s ease-in-out infinite;
+    }
+
+    @keyframes badgePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .position-badge.trailing {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: white;
+    }
+
+    .position-badge.pending {
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+    }
+
+    .position-badge.stop-failed {
+      background: linear-gradient(135deg, var(--accent-red), #cc0000);
+      color: white;
+      animation: badgePulse 1s ease-in-out infinite;
+    }
+
+    .position-badge.below-fee-be {
+      background: rgba(139, 92, 246, 0.3);
+      color: var(--accent-purple);
+    }
+
+    /* Trailing Stop Progress */
+    .trailing-info {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      border-left: 3px solid var(--accent-cyan);
+    }
+
+    .trailing-info-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .trailing-info-text {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .trailing-mode-badge {
+      font-size: 0.6rem;
+      padding: 0.15rem 0.5rem;
+      background: rgba(34, 211, 238, 0.2);
+      color: var(--accent-cyan);
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .trailing-progress {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+
+    .trailing-progress-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--bg-secondary);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .trailing-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+      transition: width 0.3s ease;
+    }
+
+    .trailing-progress-text {
+      font-size: 0.7rem;
+      color: var(--accent-cyan);
+      font-weight: 600;
+      min-width: 35px;
+      text-align: right;
+    }
+
+    /* Fee Breakdown in Position */
+    .position-fee-breakdown {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(139, 92, 246, 0.1);
+      border-radius: 6px;
+      border-left: 3px solid var(--accent-purple);
+    }
+
+    .position-fee-text {
+      font-size: 0.75rem;
+      color: var(--accent-purple);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .position-details {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .position-detail {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .position-detail-label {
+      color: var(--text-muted);
+    }
+
+    .position-detail-value {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .position-detail-value.warning {
+      color: var(--accent-orange);
+    }
+
+    .position-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .position-actions button {
+      flex: 1;
+      padding: 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    /* Log Panel */
+    .log-content {
+      height: 200px;
+      overflow-y: auto;
+      padding: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+    }
+
+    .log-entry {
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px;
+      margin-bottom: 0.3rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .log-entry.info { color: var(--text-secondary); }
+    .log-entry.success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .log-entry.warn { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+    .log-entry.error { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+    .log-entry.signal { background: rgba(139, 92, 246, 0.1); color: var(--accent-purple); }
+
+    .log-time {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    /* Loading State */
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+      color: var(--text-secondary);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border-color);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Flash Animation */
+    @keyframes flash {
+      0% { background: rgba(59, 130, 246, 0.4); }
+      100% { background: transparent; }
+    }
+
+    .flash { animation: flash 0.3s ease; }
+
+    /* Alert Overlay */
+    .alert-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--bg-card);
+      border: 2px solid var(--accent-blue);
+      border-radius: 16px;
+      padding: 2rem 3rem;
+      z-index: 1000;
+      text-align: center;
+      animation: alertPop 0.3s ease;
+      display: none;
+    }
+
+    .alert-overlay.show { display: block; }
+
+    .alert-overlay.success { border-color: var(--accent-green); }
+    .alert-overlay.warning { border-color: var(--accent-yellow); }
+    .alert-overlay.error { border-color: var(--accent-red); }
+
+    @keyframes alertPop {
+      0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+
+    .alert-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .alert-message {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    /* Confirmation Modal - V3.5 Enhanced */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-overlay.active {
+      display: flex;
+    }
+    
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2rem;
+      max-width: 550px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      animation: modalSlideIn 0.3s ease-out;
+    }
+    
+    @keyframes modalSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .modal-header {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      text-align: center;
+      color: var(--text-primary);
+    }
+    
+    .modal-header.long {
+      color: var(--accent-green);
+    }
+    
+    .modal-header.short {
+      color: var(--accent-red);
+    }
+    
+    .modal-section {
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+    }
+    
+    .modal-section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+    
+    .modal-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .modal-row:last-child {
+      border-bottom: none;
+    }
+    
+    .modal-label {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+    
+    .modal-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    
+    .modal-value.positive {
+      color: var(--accent-green);
+    }
+    
+    .modal-value.negative {
+      color: var(--accent-red);
+    }
+
+    .modal-value.cyan {
+      color: var(--accent-cyan);
+    }
+
+    .modal-value.purple {
+      color: var(--accent-purple);
+    }
+
+    .modal-value.warning {
+      color: var(--accent-orange);
+    }
+    
+    .modal-highlight {
+      background: var(--bg-tertiary);
+      padding: 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+      text-align: center;
+    }
+    
+    .modal-highlight-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+    
+    .modal-highlight-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .modal-buttons {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    
+    .modal-btn {
+      flex: 1;
+      padding: 1rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .modal-btn-confirm {
+      background: linear-gradient(135deg, var(--accent-green), #00cc70);
+      color: white;
+    }
+    
+    .modal-btn-confirm:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 255, 136, 0.3);
+    }
+    
+    .modal-btn-confirm.short {
+      background: linear-gradient(135deg, var(--accent-red), #cc0000);
+    }
+    
+    .modal-btn-confirm.short:hover {
+      box-shadow: 0 8px 20px rgba(255, 71, 87, 0.3);
+    }
+    
+    .modal-btn-cancel {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+    
+    .modal-btn-cancel:hover {
+      background: var(--bg-hover);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* No Data */
+    .no-data {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <!-- Alert Overlay -->
+  <div id="alert-overlay" class="alert-overlay">
+    <div class="alert-icon">🔔</div>
+    <div id="alert-message" class="alert-message"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">KF</div>
+      <span class="logo-text">KuCoin Futures</span>
+      <span class="version-badge">v3.5.0 • Fee-Adjusted ROI</span>
+    </div>
+    
+    <div class="header-stats">
+      <div class="stat-box">
+        <div class="stat-label">Balance</div>
+        <div id="account-balance" class="stat-value">$0.00</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Positions</div>
+        <div id="position-count" class="stat-value">0 / 5</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Gross P&L</div>
+        <div id="total-pnl" class="stat-value">$0.00</div>
+        <div id="net-pnl" class="stat-sub">Net: $0.00</div>
+      </div>
+    </div>
+
+    <div class="connection-status">
+      <div id="status-dot" class="status-dot disconnected"></div>
+      <span id="status-text">Connecting...</span>
+    </div>
+  </header>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="control-group">
+      <span class="control-label">Timeframe:</span>
+      <select id="timeframe-select">
+        <option value="1min">1 Min</option>
+        <option value="5min" selected>5 Min</option>
+        <option value="15min">15 Min</option>
+        <option value="30min">30 Min</option>
+        <option value="1hour">1 Hour</option>
+        <option value="4hour">4 Hour</option>
+        <option value="1day">1 Day</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Add Symbol:</span>
+      <input type="text" id="add-symbol-input" placeholder="e.g. DOGEUSDTM" style="width: 140px;">
+      <button id="add-symbol-btn">Add</button>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Trailing Mode:</span>
+      <select id="trailing-mode-select">
+        <option value="staircase" selected>Staircase</option>
+        <option value="atr">ATR-Based</option>
+        <option value="dynamic">Dynamic</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <button id="refresh-btn">↻ Refresh</button>
+      <button id="sound-toggle-btn">🔊 Sound ON</button>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Left Panel - Symbols -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>📊 Contracts</span>
+        <span id="symbol-count" class="badge">0</span>
+      </div>
+      <div id="symbol-list" class="symbol-list">
+        <div class="loading">
+          <div class="spinner"></div>
+          <p style="margin-top: 1rem;">Loading symbols...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center - Dashboard -->
+    <div class="dashboard">
+      <!-- Price Display -->
+      <div class="panel price-display">
+        <div class="price-header">
+          <div id="active-symbol" class="active-symbol">XBTUSDTM</div>
+          <button id="remove-symbol-btn" class="danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">Remove</button>
+        </div>
+        <div class="price-row">
+          <span id="current-price" class="current-price">--</span>
+          <span id="price-change" class="price-change-badge positive">--</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-card-label">Best Bid</div>
+            <div id="best-bid" class="stat-card-value">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Best Ask</div>
+            <div id="best-ask" class="stat-card-value">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">24h Volume</div>
+            <div id="volume-24h" class="stat-card-value">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Funding Rate</div>
+            <div id="funding-rate" class="stat-card-value">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signal Generator -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>🎯 Signal Generator</span>
+          <span class="badge">-120 to +120</span>
+        </div>
+        <div class="signal-panel">
+          <div class="signal-result">
+            <div id="signal-type" class="signal-type neutral">NEUTRAL</div>
+            <div id="signal-score" class="signal-score">0</div>
+            <div class="signal-meter">
+              <div id="signal-pointer" class="signal-meter-pointer" style="left: 50%;"></div>
+            </div>
+            <div class="signal-meter-labels">
+              <span>-120 Strong Sell</span>
+              <span>0</span>
+              <span>+120 Strong Buy</span>
+            </div>
+            <div id="confidence-badge" class="confidence-badge low">LOW CONFIDENCE</div>
+          </div>
+          
+          <div class="indicator-breakdown">
+            <div class="breakdown-title">Indicator Breakdown</div>
+            <div id="breakdown-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Book -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>📚 Order Book</span>
+          <span class="badge cyan">9th Level Entry</span>
+        </div>
+        <div class="orderbook-container">
+          <div class="orderbook-side">
+            <div class="orderbook-title bids">BIDS (Buy)</div>
+            <div id="orderbook-bids"></div>
+          </div>
+          <div class="orderbook-side">
+            <div class="orderbook-title asks">ASKS (Sell)</div>
+            <div id="orderbook-asks"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+      <!-- Live Indicators -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>📈 Live Indicators</span>
+        </div>
+        <div id="indicators-grid" class="indicators-grid"></div>
+      </div>
+
+      <!-- Trade Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>⚡ Execute Trade</span>
+          <span class="badge cyan">V3.5 ROI-Based</span>
+        </div>
+        <div class="trade-panel">
+          <div class="trade-settings">
+            <div class="trade-input">
+              <label>Position Size (% of Balance)</label>
+              <input type="number" id="position-size-input" value="0.5" min="0.1" max="10" step="0.1">
+            </div>
+            
+            <!-- Enhanced Leverage Controls -->
+            <div class="leverage-section">
+              <div class="leverage-header">
+                <label>Leverage</label>
+                <div class="leverage-mode-toggle">
+                  <button id="leverage-auto-btn" class="mode-btn active" title="Auto-calculate based on volatility">AUTO</button>
+                  <button id="leverage-manual-btn" class="mode-btn" title="Set leverage manually">MANUAL</button>
+                </div>
+              </div>
+              
+              <div id="leverage-auto-panel" class="leverage-panel">
+                <div class="auto-leverage-display">
+                  <span class="auto-leverage-label">Recommended:</span>
+                  <span id="recommended-leverage" class="auto-leverage-value">10x</span>
+                </div>
+                
+                <!-- Volatility Indicator -->
+                <div class="volatility-indicator">
+                  <div class="volatility-label">
+                    <span>Volatility (ATR%)</span>
+                    <span id="volatility-value" class="volatility-value">0.00%</span>
+                  </div>
+                  <div class="volatility-bar">
+                    <div id="volatility-marker" class="volatility-marker" style="left: 0%;"></div>
+                  </div>
+                  <div class="volatility-labels">
+                    <span>Low</span>
+                    <span>Medium</span>
+                    <span>High</span>
+                  </div>
+                </div>
+                
+                <div class="auto-leverage-info">
+                  <small id="leverage-reason">Based on ATR volatility</small>
+                </div>
+                <div class="leverage-slider-container">
+                  <label>Risk Multiplier: <span id="risk-multiplier-value">1.0x</span></label>
+                  <input type="range" id="risk-multiplier-slider" min="0.5" max="2" step="0.1" value="1">
+                  <div class="slider-labels">
+                    <span>Conservative</span>
+                    <span>Aggressive</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div id="leverage-manual-panel" class="leverage-panel" style="display: none;">
+                <select id="leverage-select">
+                  <option value="1">1x</option>
+                  <option value="2">2x</option>
+                  <option value="3">3x</option>
+                  <option value="5">5x</option>
+                  <option value="10" selected>10x</option>
+                  <option value="15">15x</option>
+                  <option value="20">20x</option>
+                  <option value="25">25x</option>
+                  <option value="50">50x</option>
+                  <option value="75">75x</option>
+                  <option value="100">100x</option>
+                </select>
+                <div class="manual-leverage-warning" id="leverage-warning" style="display: none;">
+                  <small>⚠️ High leverage increases liquidation risk</small>
+                </div>
+              </div>
+              
+              <div class="effective-leverage">
+                <span>Using: </span>
+                <strong id="effective-leverage">10x</strong>
+              </div>
+            </div>
+          </div>
+          
+          <div class="trade-buttons">
+            <button id="btn-long" class="trade-btn long">🟢 LONG</button>
+            <button id="btn-short" class="trade-btn short">🔴 SHORT</button>
+          </div>
+          
+          <!-- V3.5 Enhanced Trade Info -->
+          <div class="trade-info">
+            <div class="trade-info-section">
+              <div class="trade-info-title">Entry Details</div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Entry (9th Level):</span>
+                <span id="entry-price" class="trade-info-value">--</span>
+              </div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Position Value:</span>
+                <span id="calc-size" class="trade-info-value">--</span>
+              </div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Est. Lots:</span>
+                <span id="calc-lots" class="trade-info-value">--</span>
+              </div>
+            </div>
+            
+            <div class="trade-info-section">
+              <div class="trade-info-title">Risk Management (ROI-Based)</div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Stop Loss (<span id="sl-roi-label">0.5</span>% ROI):</span>
+                <span id="calc-sl" class="trade-info-value negative">--</span>
+              </div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Take Profit (<span id="tp-roi-label">2.0</span>% ROI):</span>
+                <span id="calc-tp" class="trade-info-value positive">--</span>
+              </div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Liquidation Est.:</span>
+                <span id="calc-liquidation" class="trade-info-value warning">--</span>
+              </div>
+            </div>
+            
+            <div class="trade-info-section">
+              <div class="trade-info-title">Fee & Break-Even (V3.5)</div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Est. Round-Trip Fees:</span>
+                <span id="calc-fees" class="trade-info-value purple">--</span>
+              </div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Fee-Adjusted Break-Even:</span>
+                <span id="calc-fee-be" class="trade-info-value cyan">--</span>
+              </div>
+              <div class="trade-info-row">
+                <span class="trade-info-label">Slippage Buffer:</span>
+                <span id="calc-slippage" class="trade-info-value">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Positions -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>💼 Active Positions</span>
+          <span id="positions-badge" class="badge">0</span>
+        </div>
+        <div id="positions-list" class="positions-list">
+          <div class="no-data">No active positions</div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>📋 Activity Log</span>
+          <button id="clear-log-btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;">Clear</button>
+        </div>
+        <div id="log-content" class="log-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- V3.5 Trade Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div id="modal-header" class="modal-header">
+        CONFIRM TRADE
+      </div>
+      
+      <div class="modal-section">
+        <div class="modal-section-title">Entry Details</div>
+        <div class="modal-row">
+          <span class="modal-label">Symbol:</span>
+          <span id="modal-symbol" class="modal-value">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Entry Price:</span>
+          <span id="modal-entry" class="modal-value">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Position Size:</span>
+          <span id="modal-size" class="modal-value">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Leverage:</span>
+          <span id="modal-leverage" class="modal-value">--</span>
+        </div>
+      </div>
+      
+      <div class="modal-section">
+        <div class="modal-section-title">Risk Management (ROI-Based)</div>
+        <div class="modal-row">
+          <span class="modal-label">Stop Loss:</span>
+          <span id="modal-sl" class="modal-value negative">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Max Loss (ROI):</span>
+          <span id="modal-max-loss" class="modal-value negative">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Take Profit:</span>
+          <span id="modal-tp" class="modal-value positive">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Max Profit (ROI):</span>
+          <span id="modal-max-profit" class="modal-value positive">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Liquidation Price:</span>
+          <span id="modal-liquidation" class="modal-value warning">--</span>
+        </div>
+      </div>
+      
+      <div class="modal-section">
+        <div class="modal-section-title">Fee Breakdown (V3.5)</div>
+        <div class="modal-row">
+          <span class="modal-label">Entry Fee (Taker):</span>
+          <span id="modal-entry-fee" class="modal-value purple">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Exit Fee (Taker):</span>
+          <span id="modal-exit-fee" class="modal-value purple">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Total Round-Trip:</span>
+          <span id="modal-total-fees" class="modal-value purple">--</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Fee-Adjusted Break-Even:</span>
+          <span id="modal-fee-be" class="modal-value cyan">--</span>
+        </div>
+      </div>
+      
+      <div class="modal-highlight">
+        <div class="modal-highlight-label">Risk : Reward Ratio</div>
+        <div id="modal-rr" class="modal-highlight-value">1:4</div>
+      </div>
+      
+      <div class="modal-buttons">
+        <button id="modal-cancel" class="modal-btn modal-btn-cancel">Cancel</button>
+        <button id="modal-confirm" class="modal-btn modal-btn-confirm">Confirm Trade</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================================================
+    // KUCOIN FUTURES DASHBOARD V3.5.0
+    // ========================================================================
+    class Dashboard {
+      constructor() {
+        this.ws = null;
+        this.activeSymbol = 'XBTUSDTM';
+        this.symbols = [];
+        this.marketData = {};
+        this.indicators = {};
+        this.signals = {};
+        this.orderBooks = {};
+        this.fundingRates = {};
+        this.contractSpecs = {};
+        this.positions = [];
+        this.accountBalance = 0;
+        this.logs = [];
+        this.soundEnabled = true;
+        this.config = {};
+        this.tradingConfig = {};
+        
+        // V3.5 Leverage controls
+        this.leverageMode = 'auto';
+        this.riskMultiplier = 1.0;
+        this.recommendedLeverages = {};
+        
+        // V3.5 Fee configuration (will be updated from server)
+        this.fees = {
+          maker: 0.0002,
+          taker: 0.0006
+        };
+        
+        // V3.5 Break-even buffer
+        this.breakEvenBuffer = 0.1;
+        
+        // V3.5 Slippage buffer
+        this.slippageBuffer = 0.02;
+        
+        // Last calculation for modal
+        this.lastCalculation = null;
+        
+        this.init();
+      }
+
+      init() {
+        this.setupEventListeners();
+        this.connect();
+        this.log('Dashboard V3.5.0 initializing...', 'info');
+      }
+
+      // ====================================================================
+      // WEBSOCKET CONNECTION
+      // ====================================================================
+      connect() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        
+        this.log(`Connecting to ${wsUrl}...`, 'info');
+        
+        try {
+          this.ws = new WebSocket(wsUrl);
+          
+          this.ws.onopen = () => {
+            this.updateConnectionStatus(true);
+            this.log('Connected to V3.5 server', 'success');
+          };
+
+          this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+          };
+
+          this.ws.onclose = () => {
+            this.updateConnectionStatus(false);
+            this.log('Disconnected. Reconnecting in 3s...', 'warn');
+            setTimeout(() => this.connect(), 3000);
+          };
+
+          this.ws.onerror = (error) => {
+            this.log('WebSocket error', 'error');
+          };
+        } catch (e) {
+          this.log(`Connection error: ${e.message}`, 'error');
+          setTimeout(() => this.connect(), 3000);
+        }
+      }
+
+      handleMessage(data) {
+        switch (data.type) {
+          case 'initial_state':
+            this.symbols = data.symbols || [];
+            this.marketData = data.marketData || {};
+            this.indicators = data.indicators || {};
+            this.signals = data.signals || {};
+            this.orderBooks = data.orderBooks || {};
+            this.fundingRates = data.fundingRates || {};
+            this.positions = data.positions || [];
+            this.accountBalance = data.accountBalance || 0;
+            this.config = data.config || {};
+            this.tradingConfig = data.config?.trading || {};
+            this.contractSpecs = data.contractSpecs || {};
+            
+            // V3.5: Update fee configuration from server
+            if (this.tradingConfig.TAKER_FEE) {
+              this.fees.taker = this.tradingConfig.TAKER_FEE;
+            }
+            if (this.tradingConfig.MAKER_FEE) {
+              this.fees.maker = this.tradingConfig.MAKER_FEE;
+            }
+            if (this.tradingConfig.BREAK_EVEN_BUFFER) {
+              this.breakEvenBuffer = this.tradingConfig.BREAK_EVEN_BUFFER;
+            }
+            if (this.tradingConfig.SLIPPAGE_BUFFER_PERCENT) {
+              this.slippageBuffer = this.tradingConfig.SLIPPAGE_BUFFER_PERCENT;
+            }
+            
+            this.log(`Loaded ${this.symbols.length} symbols`, 'success');
+            this.renderSymbolList();
+            this.updateBalance(this.accountBalance);
+            this.renderPositions();
+            if (this.symbols.length > 0) {
+              this.selectSymbol(this.symbols[0]);
+            }
+            break;
+
+          case 'market_update':
+            this.marketData[data.symbol] = data.marketData;
+            this.indicators[data.symbol] = data.indicators;
+            this.signals[data.symbol] = data.signal;
+            if (data.orderBook) this.orderBooks[data.symbol] = data.orderBook;
+            if (data.fundingRate) this.fundingRates[data.symbol] = data.fundingRate;
+            if (data.contractSpecs) this.contractSpecs[data.symbol] = data.contractSpecs;
+            if (data.recommendedLeverage) {
+              this.recommendedLeverages[data.symbol] = data.recommendedLeverage;
+            }
+            
+            this.updateSymbolListItem(data.symbol);
+            if (data.symbol === this.activeSymbol) {
+              this.updatePriceDisplay(data.marketData);
+              this.updateIndicators(data.indicators);
+              this.updateSignal(data.signal);
+              if (data.orderBook) this.updateOrderBook(data.orderBook);
+              if (data.fundingRate) this.updateFundingRate(data.fundingRate);
+              this.updateVolatilityIndicator(data.indicators);
+              this.updateTradeInfo();
+            }
+            break;
+
+          case 'symbols_updated':
+            this.symbols = data.symbols || [];
+            this.renderSymbolList();
+            this.log(`Symbol list updated: ${this.symbols.length} symbols`, 'info');
+            break;
+
+          case 'positions':
+            this.positions = data.data || [];
+            this.renderPositions();
+            break;
+
+          case 'balance':
+            this.accountBalance = parseFloat(data.data.accountEquity) || 0;
+            this.updateBalance(this.accountBalance);
+            break;
+
+          case 'log':
+            this.addLog(data.log);
+            break;
+
+          case 'alert':
+            this.showAlert(data.alertType, data.message);
+            break;
+
+          case 'timeframe_changed':
+            this.log(`Timeframe changed to ${data.timeframe}`, 'info');
+            break;
+            
+          case 'config_update':
+            this.tradingConfig = data.config || {};
+            this.log('Trading configuration updated', 'info');
+            break;
+        }
+      }
+
+      // ====================================================================
+      // UI UPDATES
+      // ====================================================================
+      updateConnectionStatus(connected) {
+        const dot = document.getElementById('status-dot');
+        const text = document.getElementById('status-text');
+        dot.className = `status-dot ${connected ? 'connected' : 'disconnected'}`;
+        text.textContent = connected ? 'Connected' : 'Disconnected';
+      }
+
+      updateBalance(balance) {
+        document.getElementById('account-balance').textContent = `$${balance.toFixed(2)}`;
+      }
+
+      renderSymbolList() {
+        const list = document.getElementById('symbol-list');
+        const count = document.getElementById('symbol-count');
+        
+        count.textContent = this.symbols.length;
+
+        if (this.symbols.length === 0) {
+          list.innerHTML = '<div class="loading"><div class="spinner"></div><p style="margin-top:1rem">Waiting for data...</p></div>';
+          return;
+        }
+
+        list.innerHTML = this.symbols.map(symbol => {
+          const market = this.marketData[symbol] || {};
+          const signal = this.signals[symbol] || {};
+          const change = market.priceChange24h || 0;
+          
+          return `
+            <div class="symbol-item ${symbol === this.activeSymbol ? 'active' : ''}" data-symbol="${symbol}">
+              <div class="symbol-info">
+                <div class="symbol-name">${symbol.replace('USDTM', '')}</div>
+                <div class="symbol-price">$${this.formatPrice(market.price)}</div>
+              </div>
+              <div class="symbol-meta">
+                <div class="symbol-change ${change >= 0 ? 'positive' : 'negative'}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</div>
+                <div class="signal-badge ${(signal.type || 'neutral').toLowerCase()}">${signal.type || 'LOAD'}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        list.querySelectorAll('.symbol-item').forEach(el => {
+          el.addEventListener('click', () => this.selectSymbol(el.dataset.symbol));
+        });
+      }
+
+      updateSymbolListItem(symbol) {
+        const el = document.querySelector(`.symbol-item[data-symbol="${symbol}"]`);
+        if (!el) return;
+
+        const market = this.marketData[symbol] || {};
+        const signal = this.signals[symbol] || {};
+        const change = market.priceChange24h || 0;
+
+        el.querySelector('.symbol-price').textContent = `$${this.formatPrice(market.price)}`;
+        
+        const changeEl = el.querySelector('.symbol-change');
+        changeEl.className = `symbol-change ${change >= 0 ? 'positive' : 'negative'}`;
+        changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+
+        const signalEl = el.querySelector('.signal-badge');
+        signalEl.className = `signal-badge ${(signal.type || 'neutral').toLowerCase()}`;
+        signalEl.textContent = signal.type || 'NEUTRAL';
+      }
+
+      selectSymbol(symbol) {
+        this.activeSymbol = symbol;
+        
+        document.querySelectorAll('.symbol-item').forEach(el => {
+          el.classList.toggle('active', el.dataset.symbol === symbol);
+        });
+
+        document.getElementById('active-symbol').textContent = symbol;
+
+        const market = this.marketData[symbol];
+        const indicators = this.indicators[symbol];
+        const signal = this.signals[symbol];
+        const orderBook = this.orderBooks[symbol];
+
+        if (market) this.updatePriceDisplay(market);
+        if (indicators) {
+          this.updateIndicators(indicators);
+          this.updateVolatilityIndicator(indicators);
+        }
+        if (signal) this.updateSignal(signal);
+        if (orderBook) this.updateOrderBook(orderBook);
+        this.updateTradeInfo();
+      }
+
+      updatePriceDisplay(data) {
+        const priceEl = document.getElementById('current-price');
+        priceEl.textContent = `$${this.formatPrice(data.price)}`;
+        priceEl.classList.add('flash');
+        setTimeout(() => priceEl.classList.remove('flash'), 300);
+
+        const change = data.priceChange24h || 0;
+        const changeEl = document.getElementById('price-change');
+        changeEl.className = `price-change-badge ${change >= 0 ? 'positive' : 'negative'}`;
+        changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+
+        document.getElementById('best-bid').textContent = `$${this.formatPrice(data.bestBid)}`;
+        document.getElementById('best-ask').textContent = `$${this.formatPrice(data.bestAsk)}`;
+        document.getElementById('volume-24h').textContent = this.formatVolume(data.volume24h);
+      }
+
+      updateIndicators(ind) {
+        const grid = document.getElementById('indicators-grid');
+        
+        const cards = [
+          { label: 'RSI (14)', value: ind.rsi?.toFixed(1), bullish: ind.rsi < 50, unit: '' },
+          { label: 'Williams %R', value: ind.williamsR?.toFixed(1), bullish: ind.williamsR < -50, unit: '' },
+          { label: 'MACD', value: ind.macd?.toFixed(2), bullish: ind.macd > 0, unit: '' },
+          { label: 'AO', value: ind.ao?.toFixed(2), bullish: ind.ao > 0, unit: '' },
+          { label: 'EMA 50', value: this.formatPrice(ind.ema50), bullish: ind.price > ind.ema50, unit: '$' },
+          { label: 'EMA 200', value: this.formatPrice(ind.ema200), bullish: ind.price > ind.ema200, unit: '$' },
+          { label: 'Stoch %K', value: ind.stochK?.toFixed(1), bullish: ind.stochK < 50, unit: '' },
+          { label: 'ATR', value: ind.atr?.toFixed(2), bullish: null, unit: '' }
+        ];
+
+        grid.innerHTML = cards.map(c => {
+          const status = c.bullish === null ? 'neutral' : (c.bullish ? 'bullish' : 'bearish');
+          return `
+            <div class="indicator-card ${status}">
+              <div class="indicator-card-label">${c.label}</div>
+              <div class="indicator-card-value ${status}">${c.unit}${c.value || '--'}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      updateVolatilityIndicator(indicators) {
+        if (!indicators || !indicators.atr || !indicators.price) return;
+        
+        const atrPercent = (indicators.atr / indicators.price) * 100;
+        
+        // Update volatility display
+        document.getElementById('volatility-value').textContent = `${atrPercent.toFixed(2)}%`;
+        
+        // Update marker position (0-5% ATR maps to 0-100% position)
+        const markerPos = Math.min(100, (atrPercent / 5) * 100);
+        document.getElementById('volatility-marker').style.left = `${markerPos}%`;
+        
+        // Update leverage display if in auto mode
+        if (this.leverageMode === 'auto') {
+          this.updateLeverageDisplay();
+        }
+      }
+
+      updateSignal(signal) {
+        const type = signal.type || 'NEUTRAL';
+        const score = signal.score || 0;
+        const confidence = signal.confidence || 'LOW';
+        const breakdown = signal.breakdown || [];
+
+        const typeEl = document.getElementById('signal-type');
+        typeEl.textContent = type.replace('_', ' ');
+        typeEl.className = `signal-type ${type.toLowerCase()}`;
+
+        document.getElementById('signal-score').textContent = score > 0 ? `+${score}` : score;
+
+        // Map -120 to +120 -> 0% to 100%
+        const pointerPos = ((score + 120) / 240) * 100;
+        document.getElementById('signal-pointer').style.left = `${pointerPos}%`;
+
+        const confEl = document.getElementById('confidence-badge');
+        confEl.textContent = `${confidence} CONFIDENCE`;
+        confEl.className = `confidence-badge ${confidence.toLowerCase()}`;
+
+        const breakdownEl = document.getElementById('breakdown-list');
+        breakdownEl.innerHTML = breakdown.map(b => `
+          <div class="breakdown-item">
+            <span class="breakdown-indicator">${b.indicator}</span>
+            <span class="breakdown-reason">${b.reason}</span>
+            <span class="breakdown-contribution ${b.contribution > 0 ? 'positive' : b.contribution < 0 ? 'negative' : ''}">${b.contribution > 0 ? '+' : ''}${b.contribution}</span>
+          </div>
+        `).join('');
+      }
+
+      updateOrderBook(data) {
+        const bids = data.bids || [];
+        const asks = data.asks || [];
+        
+        const maxBidSize = Math.max(...bids.slice(0, 10).map(b => parseFloat(b[1])), 1);
+        const maxAskSize = Math.max(...asks.slice(0, 10).map(a => parseFloat(a[1])), 1);
+
+        document.getElementById('orderbook-bids').innerHTML = bids.slice(0, 10).map((b, i) => {
+          const size = parseFloat(b[1]);
+          const depthPercent = (size / maxBidSize) * 100;
+          return `
+            <div class="orderbook-row bid ${i === 8 ? 'highlight' : ''}">
+              <div class="depth-bar" style="width: ${depthPercent}%"></div>
+              <span class="ob-price bid">${this.formatPrice(b[0])}</span>
+              <span class="ob-size">${size.toFixed(4)}</span>
+            </div>
+          `;
+        }).join('');
+
+        document.getElementById('orderbook-asks').innerHTML = asks.slice(0, 10).map((a, i) => {
+          const size = parseFloat(a[1]);
+          const depthPercent = (size / maxAskSize) * 100;
+          return `
+            <div class="orderbook-row ask ${i === 8 ? 'highlight' : ''}">
+              <div class="depth-bar" style="width: ${depthPercent}%"></div>
+              <span class="ob-price ask">${this.formatPrice(a[0])}</span>
+              <span class="ob-size">${size.toFixed(4)}</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      updateFundingRate(data) {
+        const rate = data.rate || 0;
+        const ratePercent = (rate * 100).toFixed(4);
+        const el = document.getElementById('funding-rate');
+        el.textContent = `${ratePercent}%`;
+        el.style.color = rate >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+      }
+
+      // ====================================================================
+      // V3.5 LEVERAGE CONTROLS
+      // ====================================================================
+      getEffectiveLeverage() {
+        if (this.leverageMode === 'manual') {
+          return parseInt(document.getElementById('leverage-select').value) || 10;
+        } else {
+          return this.calculateAutoLeverage();
+        }
+      }
+
+      calculateAutoLeverage() {
+        const indicators = this.indicators[this.activeSymbol];
+        if (!indicators) return 10;
+
+        const atr = indicators.atr || 0;
+        const price = indicators.price || 1;
+        
+        const atrPercent = (atr / price) * 100;
+        
+        // V3.5: Volatility-based leverage tiers from PDF
+        let baseLeverage;
+        
+        if (atrPercent < 0.5) {
+          baseLeverage = 50;
+        } else if (atrPercent < 1) {
+          baseLeverage = 25;
+        } else if (atrPercent < 2) {
+          baseLeverage = 15;
+        } else if (atrPercent < 3) {
+          baseLeverage = 10;
+        } else if (atrPercent < 5) {
+          baseLeverage = 5;
+        } else {
+          baseLeverage = 3;
+        }
+        
+        // Apply risk multiplier
+        let adjustedLeverage = Math.round(baseLeverage * this.riskMultiplier);
+        
+        // Clamp between 1 and 100
+        adjustedLeverage = Math.max(1, Math.min(100, adjustedLeverage));
+        
+        // Update reason display
+        const reasonEl = document.getElementById('leverage-reason');
+        if (reasonEl) {
+          reasonEl.textContent = `ATR: ${atrPercent.toFixed(2)}% → Base: ${baseLeverage}x`;
+        }
+        
+        return adjustedLeverage;
+      }
+
+      updateLeverageDisplay() {
+        const autoLeverage = this.calculateAutoLeverage();
+        const effectiveLeverage = this.getEffectiveLeverage();
+        
+        const recommendedEl = document.getElementById('recommended-leverage');
+        if (recommendedEl) {
+          recommendedEl.textContent = `${autoLeverage}x`;
+        }
+        
+        const effectiveEl = document.getElementById('effective-leverage');
+        if (effectiveEl) {
+          effectiveEl.textContent = `${effectiveLeverage}x`;
+        }
+        
+        // Show warning for high manual leverage
+        const warningEl = document.getElementById('leverage-warning');
+        if (warningEl && this.leverageMode === 'manual') {
+          const manualLev = parseInt(document.getElementById('leverage-select').value) || 10;
+          warningEl.style.display = manualLev > 25 ? 'block' : 'none';
+        }
+        
+        return effectiveLeverage;
+      }
+
+      setLeverageMode(mode) {
+        this.leverageMode = mode;
+        
+        document.getElementById('leverage-auto-btn').classList.toggle('active', mode === 'auto');
+        document.getElementById('leverage-manual-btn').classList.toggle('active', mode === 'manual');
+        
+        document.getElementById('leverage-auto-panel').style.display = mode === 'auto' ? 'block' : 'none';
+        document.getElementById('leverage-manual-panel').style.display = mode === 'manual' ? 'block' : 'none';
+        
+        this.updateTradeInfo();
+        this.log(`Leverage mode: ${mode.toUpperCase()}`, 'info');
+      }
+
+      // ====================================================================
+      // V3.5 TRADE INFO CALCULATIONS
+      // ====================================================================
+      updateTradeInfo() {
+        const ob = this.orderBooks[this.activeSymbol];
+        if (!ob) return;
+
+        const bids = ob.bids || [];
+        const asks = ob.asks || [];
+
+        if (bids.length < 9 || asks.length < 9) return;
+
+        const positionSize = parseFloat(document.getElementById('position-size-input').value) || 0.5;
+        const leverage = this.updateLeverageDisplay();
+
+        const longEntry = parseFloat(bids[8][0]);
+        const shortEntry = parseFloat(asks[8][0]);
+        
+        // V3.5: ROI-based SL/TP calculation with inverse leverage scaling
+        const slROI = this.tradingConfig.INITIAL_SL_ROI || 0.5;  // 0.5% ROI target
+        const tpROI = this.tradingConfig.INITIAL_TP_ROI || 2.0;  // 2.0% ROI target
+        
+        // Formula: Required Price Move % = Target ROI % ÷ Leverage
+        const slPricePercent = slROI / leverage;
+        const tpPricePercent = tpROI / leverage;
+        
+        // Calculate SL/TP prices
+        const longSL = longEntry * (1 - slPricePercent / 100);
+        const longTP = longEntry * (1 + tpPricePercent / 100);
+        const shortSL = shortEntry * (1 + slPricePercent / 100);
+        const shortTP = shortEntry * (1 - tpPricePercent / 100);
+        
+        // Position sizing
+        const marginUsed = this.accountBalance * (positionSize / 100);
+        const positionValue = marginUsed * leverage;
+        
+        // Estimate lots
+        const avgPrice = (longEntry + shortEntry) / 2;
+        const specs = this.contractSpecs[this.activeSymbol];
+        const multiplier = specs?.multiplier || 0.001;
+        const estLots = Math.floor(positionValue / (avgPrice * multiplier));
+        
+        // V3.5: Liquidation price calculation
+        // Formula: liqPrice = entry ± (entry / leverage × (1 + maintMargin))
+        const maintMargin = this.tradingConfig.MAINTENANCE_MARGIN_PERCENT || 0.5;
+        const liqFactor = (1 / leverage) * (1 + maintMargin / 100);
+        const longLiq = longEntry * (1 - liqFactor);
+        const shortLiq = shortEntry * (1 + liqFactor);
+        
+        // V3.5: Fee calculations
+        const totalFeeRate = this.fees.taker * 2;  // Entry + Exit
+        const estFees = positionValue * totalFeeRate;
+        const estFeesPercent = (estFees / marginUsed) * 100;
+        
+        // V3.5: Fee-adjusted break-even ROI
+        // Formula: breakEvenROI = (entryFee + exitFee) × leverage × 100 + buffer
+        const feeAdjustedBE = (totalFeeRate * leverage * 100) + this.breakEvenBuffer;
+        
+        // Update ROI labels
+        document.getElementById('sl-roi-label').textContent = slROI.toFixed(1);
+        document.getElementById('tp-roi-label').textContent = tpROI.toFixed(1);
+        
+        // Update display - Entry Details
+        document.getElementById('entry-price').textContent = `L: $${this.formatPrice(longEntry)} | S: $${this.formatPrice(shortEntry)}`;
+        document.getElementById('calc-size').textContent = `$${positionValue.toFixed(2)} (${positionSize}% × ${leverage}x)`;
+        document.getElementById('calc-lots').textContent = `~${estLots} lots`;
+        
+        // Update display - Risk Management
+        document.getElementById('calc-sl').textContent = `L: $${this.formatPrice(longSL)} | S: $${this.formatPrice(shortSL)}`;
+        document.getElementById('calc-tp').textContent = `L: $${this.formatPrice(longTP)} | S: $${this.formatPrice(shortTP)}`;
+        document.getElementById('calc-liquidation').textContent = `L: $${this.formatPrice(longLiq)} | S: $${this.formatPrice(shortLiq)}`;
+        
+        // Update display - V3.5 Fee & Break-Even
+        document.getElementById('calc-fees').textContent = `$${estFees.toFixed(2)} (${estFeesPercent.toFixed(2)}% of margin)`;
+        document.getElementById('calc-fee-be').textContent = `${feeAdjustedBE.toFixed(2)}% ROI`;
+        document.getElementById('calc-slippage').textContent = `${this.slippageBuffer}% price buffer`;
+        
+        // Store calculation data for confirmation modal
+        this.lastCalculation = {
+          side: null,
+          longEntry, shortEntry, 
+          longSL, shortSL, 
+          longTP, shortTP,
+          longLiq, shortLiq,
+          positionValue, 
+          marginUsed,
+          estLots, 
+          leverage, 
+          positionSize,
+          slROI, tpROI,
+          slPricePercent: slPricePercent.toFixed(3),
+          tpPricePercent: tpPricePercent.toFixed(3),
+          estFees,
+          estFeesPercent,
+          feeAdjustedBE,
+          entryFee: positionValue * this.fees.taker,
+          exitFee: positionValue * this.fees.taker
+        };
+      }
+
+      // ====================================================================
+      // POSITIONS RENDERING - V3.5 ENHANCED
+      // ====================================================================
+      renderPositions() {
+        const list = document.getElementById('positions-list');
+        const badge = document.getElementById('positions-badge');
+        const countEl = document.getElementById('position-count');
+
+        badge.textContent = this.positions.length;
+        countEl.textContent = `${this.positions.length} / 5`;
+
+        // Calculate total gross and net P&L
+        const totalGrossPnl = this.positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0);
+        const totalNetPnl = this.positions.reduce((sum, p) => sum + (p.netPnlEstimate || p.unrealizedPnl || 0), 0);
+        
+        const totalPnlEl = document.getElementById('total-pnl');
+        totalPnlEl.textContent = `${totalGrossPnl >= 0 ? '+' : ''}$${totalGrossPnl.toFixed(2)}`;
+        totalPnlEl.className = `stat-value ${totalGrossPnl >= 0 ? 'positive' : 'negative'}`;
+        
+        const netPnlEl = document.getElementById('net-pnl');
+        netPnlEl.textContent = `Net: ${totalNetPnl >= 0 ? '+' : ''}$${totalNetPnl.toFixed(2)}`;
+
+        if (this.positions.length === 0) {
+          list.innerHTML = '<div class="no-data">No active positions</div>';
+          return;
+        }
+
+        list.innerHTML = this.positions.map(pos => {
+          const grossPnl = pos.unrealizedPnl || 0;
+          const pnlPercent = pos.unrealizedPnlPercent || 0;
+          const netPnl = pos.netPnlEstimate || grossPnl;
+          const totalFees = pos.totalFeesEstimate || 0;
+          
+          // V3.5: Status badges
+          let badges = '';
+          let trailingInfo = '';
+          
+          // Stop order failed badge
+          if (pos.stopOrderFailed) {
+            badges += '<div class="position-badge stop-failed">⚠️ STOP FAILED</div>';
+          }
+          
+          // Break-even badge
+          if (pos.breakEvenTriggered) {
+            badges += '<div class="position-badge break-even">🔒 BREAK-EVEN</div>';
+          } else if (pos.status === 'pending') {
+            badges += '<div class="position-badge pending">⏳ PENDING</div>';
+          }
+          
+          // Below fee break-even badge
+          const feeAdjustedBE = pos.feeAdjustedBreakEvenROI || 1.3;
+          if (!pos.breakEvenTriggered && pnlPercent > 0 && pnlPercent < feeAdjustedBE) {
+            badges += '<div class="position-badge below-fee-be">📊 BELOW FEE BE</div>';
+          }
+          
+          // Trailing stop indicator
+          if (pos.breakEvenTriggered && pnlPercent > 0.15) {
+            const trailingMode = pos.trailingMode || 'staircase';
+            const trailingStep = trailingMode === 'dynamic' ? this.getDynamicStep(pnlPercent) : 0.15;
+            const trailingSteps = Math.floor(pnlPercent / trailingStep);
+            const nextTrailAt = ((trailingSteps + 1) * trailingStep).toFixed(2);
+            const progress = ((pnlPercent % trailingStep) / trailingStep) * 100;
+            
+            badges += '<div class="position-badge trailing">📈 TRAILING</div>';
+            
+            trailingInfo = `
+              <div class="trailing-info">
+                <div class="trailing-info-header">
+                  <span class="trailing-info-text">Steps: ${trailingSteps} · Next at +${nextTrailAt}% ROI</span>
+                  <span class="trailing-mode-badge">${trailingMode.toUpperCase()}</span>
+                </div>
+                <div class="trailing-progress">
+                  <div class="trailing-progress-bar">
+                    <div class="trailing-progress-fill" style="width: ${progress}%"></div>
+                  </div>
+                  <span class="trailing-progress-text">${progress.toFixed(0)}%</span>
+                </div>
+              </div>
+            `;
+          }
+          
+          // V3.5: Fee breakdown
+          let feeBreakdown = '';
+          if (totalFees > 0) {
+            feeBreakdown = `
+              <div class="position-fee-breakdown">
+                <span class="position-fee-text">Est. Fees: $${totalFees.toFixed(2)}</span>
+              </div>
+            `;
+          }
+          
+          // Position details
+          const posValue = pos.positionValueUSD || (pos.size * pos.entryPrice);
+          const marginUsed = pos.marginUsed || (posValue / pos.leverage);
+          const liquidationPrice = pos.liquidationPrice || '--';
+          const remainingSize = pos.partialTPTriggered ? Math.floor(pos.size * 0.5) : pos.size;
+          
+          return `
+            <div class="position-item">
+              <div class="position-header">
+                <span class="position-symbol">${pos.symbol}</span>
+                <span class="position-side ${pos.side}">${pos.side.toUpperCase()}</span>
+              </div>
+              
+              <div class="position-pnl-container">
+                <div class="position-pnl ${grossPnl >= 0 ? 'positive' : 'negative'}">
+                  ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}% ROI)
+                </div>
+                <div class="position-net-pnl">
+                  Net: ${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)} after fees
+                </div>
+              </div>
+              
+              ${badges ? `<div class="position-badges">${badges}</div>` : ''}
+              ${trailingInfo}
+              ${feeBreakdown}
+              
+              <div class="position-details">
+                <div class="position-detail">
+                  <span class="position-detail-label">Entry:</span>
+                  <span class="position-detail-value">$${this.formatPrice(pos.entryPrice)}</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">Current:</span>
+                  <span class="position-detail-value">$${this.formatPrice(pos.currentPrice)}</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">Size:</span>
+                  <span class="position-detail-value">${remainingSize} lots${pos.partialTPTriggered ? ' (50%)' : ''}</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">Margin:</span>
+                  <span class="position-detail-value">$${marginUsed.toFixed(2)} @ ${pos.leverage}x</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">SL:</span>
+                  <span class="position-detail-value">$${this.formatPrice(pos.currentSL)}</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">TP:</span>
+                  <span class="position-detail-value">$${this.formatPrice(pos.takeProfit)}</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">Liquidation:</span>
+                  <span class="position-detail-value warning">$${this.formatPrice(liquidationPrice)}</span>
+                </div>
+                <div class="position-detail">
+                  <span class="position-detail-label">Fee-Adj BE:</span>
+                  <span class="position-detail-value">${feeAdjustedBE.toFixed(2)}% ROI</span>
+                </div>
+              </div>
+              
+              <div class="position-actions">
+                <button class="danger" onclick="dashboard.closePosition('${pos.symbol}')">Close Position</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      getDynamicStep(pnlPercent) {
+        if (pnlPercent < 5) return 0.10;
+        if (pnlPercent < 20) return 0.15;
+        return 0.25;
+      }
+
+      // ====================================================================
+      // TRADE EXECUTION
+      // ====================================================================
+      placeOrder(side) {
+        if (!this.activeSymbol) {
+          this.log('No symbol selected', 'error');
+          return;
+        }
+
+        if (this.positions.length >= 5) {
+          this.log('Max positions (5) reached', 'error');
+          return;
+        }
+
+        if (this.positions.find(p => p.symbol === this.activeSymbol)) {
+          this.log(`Already have position in ${this.activeSymbol}`, 'error');
+          return;
+        }
+
+        if (!this.lastCalculation) {
+          this.log('No calculation data available. Refresh the page.', 'error');
+          return;
+        }
+
+        this.lastCalculation.side = side;
+        this.showConfirmModal(side);
+      }
+
+      showConfirmModal(side) {
+        const calc = this.lastCalculation;
+        const isLong = side === 'long';
+        const entry = isLong ? calc.longEntry : calc.shortEntry;
+        const sl = isLong ? calc.longSL : calc.shortSL;
+        const tp = isLong ? calc.longTP : calc.shortTP;
+        const liq = isLong ? calc.longLiq : calc.shortLiq;
+        
+        // Calculate max loss/profit in dollars
+        const maxLoss = (calc.marginUsed * (calc.slROI / 100)).toFixed(2);
+        const maxProfit = (calc.marginUsed * (calc.tpROI / 100)).toFixed(2);
+        const rr = (calc.tpROI / calc.slROI).toFixed(1);
+        
+        // Update modal content
+        document.getElementById('modal-header').textContent = `CONFIRM ${side.toUpperCase()} TRADE`;
+        document.getElementById('modal-header').className = `modal-header ${side}`;
+        
+        // Entry Details
+        document.getElementById('modal-symbol').textContent = this.activeSymbol;
+        document.getElementById('modal-entry').textContent = `$${this.formatPrice(entry)}`;
+        document.getElementById('modal-size').textContent = `$${calc.positionValue.toFixed(2)} (~${calc.estLots} lots)`;
+        document.getElementById('modal-leverage').textContent = `${calc.leverage}x`;
+        
+        // Risk Management
+        document.getElementById('modal-sl').textContent = `$${this.formatPrice(sl)} (${calc.slROI}% ROI = ${calc.slPricePercent}% price)`;
+        document.getElementById('modal-max-loss').textContent = `-$${maxLoss} (${calc.slROI}% of margin)`;
+        document.getElementById('modal-tp').textContent = `$${this.formatPrice(tp)} (${calc.tpROI}% ROI = ${calc.tpPricePercent}% price)`;
+        document.getElementById('modal-max-profit').textContent = `+$${maxProfit} (${calc.tpROI}% of margin)`;
+        document.getElementById('modal-liquidation').textContent = `$${this.formatPrice(liq)}`;
+        
+        // V3.5 Fee Breakdown
+        document.getElementById('modal-entry-fee').textContent = `$${calc.entryFee.toFixed(2)} (${(this.fees.taker * 100).toFixed(2)}%)`;
+        document.getElementById('modal-exit-fee').textContent = `$${calc.exitFee.toFixed(2)} (${(this.fees.taker * 100).toFixed(2)}%)`;
+        document.getElementById('modal-total-fees').textContent = `$${calc.estFees.toFixed(2)} (${calc.estFeesPercent.toFixed(2)}% of margin)`;
+        document.getElementById('modal-fee-be').textContent = `${calc.feeAdjustedBE.toFixed(2)}% ROI`;
+        
+        // Risk:Reward
+        document.getElementById('modal-rr').textContent = `1:${rr}`;
+        
+        // Update confirm button style
+        const confirmBtn = document.getElementById('modal-confirm');
+        confirmBtn.className = `modal-btn modal-btn-confirm ${side}`;
+        
+        // Show modal
+        document.getElementById('confirm-modal').classList.add('active');
+      }
+
+      confirmTrade() {
+        const calc = this.lastCalculation;
+        const trailingMode = document.getElementById('trailing-mode-select').value;
+
+        this.send({
+          type: 'place_order',
+          symbol: this.activeSymbol,
+          side: calc.side,
+          positionSize: calc.positionSize,
+          leverage: calc.leverage,
+          trailingMode: trailingMode
+        });
+
+        this.log(`Placing ${calc.side.toUpperCase()} order for ${this.activeSymbol} (${calc.positionSize}% @ ${calc.leverage}x)`, 'info');
+        this.playSound('entry');
+        
+        document.getElementById('confirm-modal').classList.remove('active');
+      }
+
+      cancelTrade() {
+        document.getElementById('confirm-modal').classList.remove('active');
+      }
+
+      closePosition(symbol) {
+        this.send({
+          type: 'close_position',
+          symbol: symbol
+        });
+        this.log(`Closing position: ${symbol}...`, 'info');
+      }
+
+      // ====================================================================
+      // SYMBOL MANAGEMENT
+      // ====================================================================
+      addSymbol() {
+        const input = document.getElementById('add-symbol-input');
+        const symbol = input.value.toUpperCase().trim();
+        
+        if (!symbol) return;
+        if (!symbol.endsWith('USDTM')) {
+          this.log('Symbol must end with USDTM (e.g., DOGEUSDTM)', 'error');
+          return;
+        }
+
+        this.send({ type: 'add_symbol', symbol });
+        this.log(`Adding symbol: ${symbol}...`, 'info');
+        input.value = '';
+      }
+
+      removeSymbol() {
+        if (this.symbols.length <= 1) {
+          this.log('Cannot remove last symbol', 'error');
+          return;
+        }
+
+        this.send({ type: 'remove_symbol', symbol: this.activeSymbol });
+        this.log(`Removing symbol: ${this.activeSymbol}...`, 'info');
+        
+        this.symbols = this.symbols.filter(s => s !== this.activeSymbol);
+        this.renderSymbolList();
+        if (this.symbols.length > 0) {
+          this.selectSymbol(this.symbols[0]);
+        }
+      }
+
+      changeTimeframe(tf) {
+        this.send({ type: 'change_timeframe', timeframe: tf });
+        this.log(`Changing timeframe to ${tf}...`, 'info');
+      }
+
+      // ====================================================================
+      // HELPERS
+      // ====================================================================
+      send(data) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify(data));
+        }
+      }
+
+      formatPrice(price) {
+        if (!price || price === '--') return '--';
+        price = parseFloat(price);
+        if (isNaN(price)) return '--';
+        if (price >= 10000) return price.toFixed(1);
+        if (price >= 1000) return price.toFixed(2);
+        if (price >= 1) return price.toFixed(4);
+        return price.toFixed(6);
+      }
+
+      formatVolume(vol) {
+        if (!vol) return '--';
+        vol = parseFloat(vol);
+        if (vol >= 1e9) return (vol / 1e9).toFixed(2) + 'B';
+        if (vol >= 1e6) return (vol / 1e6).toFixed(2) + 'M';
+        if (vol >= 1e3) return (vol / 1e3).toFixed(2) + 'K';
+        return vol.toFixed(2);
+      }
+
+      log(message, type = 'info') {
+        const log = {
+          timestamp: new Date().toLocaleTimeString(),
+          message,
+          type
+        };
+        this.logs.unshift(log);
+        if (this.logs.length > 100) this.logs = this.logs.slice(0, 100);
+        this.renderLogs();
+      }
+
+      addLog(log) {
+        this.logs.unshift({
+          timestamp: new Date(log.timestamp).toLocaleTimeString(),
+          message: log.message,
+          type: log.type
+        });
+        if (this.logs.length > 100) this.logs = this.logs.slice(0, 100);
+        this.renderLogs();
+      }
+
+      renderLogs() {
+        const container = document.getElementById('log-content');
+        container.innerHTML = this.logs.map(log => `
+          <div class="log-entry ${log.type}">
+            <span class="log-time">${log.timestamp}</span>
+            <span>${log.message}</span>
+          </div>
+        `).join('');
+      }
+
+      clearLogs() {
+        this.logs = [];
+        this.renderLogs();
+      }
+
+      showAlert(type, message) {
+        const overlay = document.getElementById('alert-overlay');
+        const msgEl = document.getElementById('alert-message');
+        
+        overlay.className = `alert-overlay show ${type}`;
+        msgEl.textContent = message;
+
+        this.playSound('alert');
+
+        setTimeout(() => {
+          overlay.classList.remove('show');
+        }, 3000);
+      }
+
+      playSound(type) {
+        if (!this.soundEnabled) return;
+        
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const oscillator = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+
+          oscillator.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+
+          if (type === 'entry') {
+            oscillator.frequency.value = 880;
+            oscillator.type = 'sine';
+          } else {
+            oscillator.frequency.value = 440;
+            oscillator.type = 'square';
+          }
+
+          gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+          oscillator.start(audioCtx.currentTime);
+          oscillator.stop(audioCtx.currentTime + 0.3);
+        } catch (e) {
+          // Audio not supported
+        }
+      }
+
+      toggleSound() {
+        this.soundEnabled = !this.soundEnabled;
+        document.getElementById('sound-toggle-btn').textContent = this.soundEnabled ? '🔊 Sound ON' : '🔇 Sound OFF';
+      }
+
+      // ====================================================================
+      // EVENT LISTENERS
+      // ====================================================================
+      setupEventListeners() {
+        // Trade buttons
+        document.getElementById('btn-long').addEventListener('click', () => this.placeOrder('long'));
+        document.getElementById('btn-short').addEventListener('click', () => this.placeOrder('short'));
+        
+        // Symbol management
+        document.getElementById('add-symbol-btn').addEventListener('click', () => this.addSymbol());
+        document.getElementById('remove-symbol-btn').addEventListener('click', () => this.removeSymbol());
+        document.getElementById('add-symbol-input').addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') this.addSymbol();
+        });
+        
+        // Controls
+        document.getElementById('clear-log-btn').addEventListener('click', () => this.clearLogs());
+        document.getElementById('sound-toggle-btn').addEventListener('click', () => this.toggleSound());
+        
+        document.getElementById('refresh-btn').addEventListener('click', () => {
+          this.send({ type: 'refresh_data', symbol: this.activeSymbol });
+          this.log('Refreshing data...', 'info');
+        });
+
+        document.getElementById('timeframe-select').addEventListener('change', (e) => {
+          this.changeTimeframe(e.target.value);
+        });
+
+        // Position size updates
+        document.getElementById('position-size-input').addEventListener('input', () => this.updateTradeInfo());
+        
+        // Leverage controls
+        document.getElementById('leverage-select').addEventListener('change', () => this.updateTradeInfo());
+        document.getElementById('leverage-auto-btn').addEventListener('click', () => this.setLeverageMode('auto'));
+        document.getElementById('leverage-manual-btn').addEventListener('click', () => this.setLeverageMode('manual'));
+        
+        // Risk multiplier slider
+        document.getElementById('risk-multiplier-slider').addEventListener('input', (e) => {
+          this.riskMultiplier = parseFloat(e.target.value);
+          document.getElementById('risk-multiplier-value').textContent = `${this.riskMultiplier.toFixed(1)}x`;
+          this.updateTradeInfo();
+        });
+        
+        // Modal buttons
+        document.getElementById('modal-confirm').addEventListener('click', () => this.confirmTrade());
+        document.getElementById('modal-cancel').addEventListener('click', () => this.cancelTrade());
+        
+        // Close modal on overlay click
+        document.getElementById('confirm-modal').addEventListener('click', (e) => {
+          if (e.target.id === 'confirm-modal') this.cancelTrade();
+        });
+        
+        // Trailing mode selector
+        document.getElementById('trailing-mode-select').addEventListener('change', (e) => {
+          this.log(`Trailing mode: ${e.target.value.toUpperCase()}`, 'info');
+        });
+      }
+    }
+
+    // Initialize dashboard
+    let dashboard;
+    document.addEventListener('DOMContentLoaded', () => {
+      dashboard = new Dashboard();
+    });
+  </script>
+</body>
+</html>
