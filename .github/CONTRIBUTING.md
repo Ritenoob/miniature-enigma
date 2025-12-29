@@ -15,8 +15,8 @@ Thank you for your interest in contributing to this project! This document provi
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/Ritenoob/miniature-enigma.git
-   cd miniature-enigma
+   git clone https://github.com/Ritenoob/kucoin-futures-dashboard.git
+   cd kucoin-futures-dashboard
    ```
 
 2. **Install dependencies**
