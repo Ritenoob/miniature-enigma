@@ -318,7 +318,7 @@ async executeNewOrderType() {
 
 - KuCoin Futures API: https://docs.kucoin.com/futures/
 - Technical Indicators: Standard TA-Lib formulas
-- Risk Management: Based on internal PDF documentation (v3.5)
+- Risk Management: Based on v3.5 documentation (includes position sizing, ROI-based SL/TP, fee calculations, liquidation formulas, and trailing stop algorithms)
 
 ## Version History
 
