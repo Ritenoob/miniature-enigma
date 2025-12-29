@@ -1,11 +1,12 @@
 {
   "name": "kucoin-futures-dashboard",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "description": "KuCoin Perpetual Futures Semi-Automated Trading Dashboard with V3.5 Enhancements",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test"
   },
   "keywords": [
     "kucoin",
