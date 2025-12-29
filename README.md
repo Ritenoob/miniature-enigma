@@ -1,4 +1,4 @@
-# KuCoin Perpetual Futures Dashboard v3.5.0
+# KuCoin Perpetual Futures Dashboard v3.5.1
 
 ## 🚀 V3.5 Enhancements
 
@@ -289,7 +289,13 @@ This software is for educational purposes. Cryptocurrency trading involves subst
 
 ## 📝 Version History
 
-### v3.5.0 (Current)
+### v3.5.1 (Current)
+- Demo mode with synthetic KuCoin data and mock trading client
+- Test-friendly startup controls and graceful shutdown improvements
+- Automated formula tests and GitHub Actions CI pipeline
+- Updated environment template and documentation for unified setup
+
+### v3.5.0
 - Fee-adjusted break-even calculation
 - Accurate liquidation price formula
 - Slippage buffer on stop orders
@@ -312,3 +318,34 @@ This software is for educational purposes. Cryptocurrency trading involves subst
 ### v3.4.0
 - Dollar-based position sizing
 - Leveraged P&L percentages
+
+---
+
+## 🧰 Local Development & Demo Mode
+
+1. Copy the environment template and configure credentials (or enable demo mode):
+   ```bash
+   cp .env.example .env
+   # add your KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE
+   # or set DEMO_MODE=true to explore the dashboard with synthetic data
+   ```
+2. Install dependencies and start the server:
+   ```bash
+   npm install
+   npm start
+   ```
+   When `DEMO_MODE=true`, the server uses a mock KuCoin client, generates synthetic market data, and never sends live orders.
+3. Run the automated tests:
+   ```bash
+   npm test
+   ```
+   (Set `RUN_INTERVALS=false` in automation to skip background polling timers.)
+
+
+## ✅ Release Notes (v3.5.1)
+- Added demo mode with synthetic market data and mock KuCoin client for safe local exploration.
+- Added automated tests for trading math formulas (`node --test`).
+- Added GitHub Actions CI workflow to run tests on every push/PR.
+- Hardened server lifecycle: optional interval startup, graceful shutdown, and test-friendly exports.
+- Provided `.env.example` and updated README with unified setup instructions.
+

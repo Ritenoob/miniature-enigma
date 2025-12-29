@@ -1,6 +1,6 @@
 // ============================================================================
 // KuCoin Perpetual Futures Dashboard - Semi-Automated Trading System
-// Version: 3.5.0
+// Version: 3.5.1
 // 
 // CHANGELOG FROM V3.4.2:
 // - Fee-adjusted break-even calculation (accounts for maker/taker fees)
@@ -123,6 +123,9 @@ app.get('/favicon.ico', (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -130,11 +133,13 @@ const wss = new WebSocket.Server({ server });
 // ============================================================================
 // API CREDENTIALS
 // ============================================================================
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
+const SHOULD_START_INTERVALS = process.env.RUN_INTERVALS !== 'false';
 const KUCOIN_API_KEY = process.env.KUCOIN_API_KEY;
 const KUCOIN_API_SECRET = process.env.KUCOIN_API_SECRET;
 const KUCOIN_API_PASSPHRASE = process.env.KUCOIN_API_PASSPHRASE;
 
-if (!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) {
+if ((!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) && !DEMO_MODE) {
   console.error('╔═══════════════════════════════════════════════════════════════╗');
   console.error('║  ERROR: Missing KuCoin API credentials                        ║');
   console.error('║  Please set in .env file:                                     ║');
@@ -143,6 +148,10 @@ if (!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) {
   console.error('║    KUCOIN_API_PASSPHRASE=your_passphrase                      ║');
   console.error('╚═══════════════════════════════════════════════════════════════╝');
   process.exit(1);
+}
+
+if (DEMO_MODE) {
+  console.warn('[INIT] Demo mode enabled. Using mock KuCoin client and synthetic market data. No live orders will be sent.');
 }
 
 // ============================================================================
@@ -155,7 +164,6 @@ const fundingRates = {};             // Symbol -> { rate, nextFundingTime }
 const contractSpecs = {};            // Symbol -> { tickSize, lotSize, multiplier, maintMargin }
 const wsClients = new Set();         // Connected dashboard clients
 const positionMonitor = new EventEmitter();
-const retryQueue = [];               // Failed API operations to retry
 
 let currentTimeframe = '5min';
 let accountBalance = 0;
@@ -556,7 +564,166 @@ class KuCoinFuturesAPI {
   }
 }
 
-const kucoinAPI = new KuCoinFuturesAPI(KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE);
+// ============================================================================
+// DEMO MODE SUPPORT
+// ============================================================================
+class MockKuCoinFuturesAPI {
+  constructor() {
+    this.baseURL = CONFIG.KUCOIN_FUTURES_API;
+    this.samplePrices = {
+      XBTUSDTM: 50000,
+      ETHUSDTM: 3200,
+      SOLUSDTM: 100,
+      BNBUSDTM: 500,
+      XRPUSDTM: 0.6
+    };
+  }
+
+  async getServerTime() {
+    return { code: '200000', data: Date.now() };
+  }
+
+  async getContracts() {
+    return {
+      code: '200000',
+      data: CONFIG.DEFAULT_SYMBOLS.map(symbol => ({
+        symbol,
+        quoteCurrency: 'USDT',
+        status: 'Open'
+      }))
+    };
+  }
+
+  async getContractDetail(symbol) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    return {
+      code: '200000',
+      data: {
+        symbol,
+        tickSize: basePrice > 100 ? '0.1' : '0.0001',
+        lotSize: '1',
+        multiplier: '1',
+        maintMarginRate: '0.005',
+        maxLeverage: 50,
+        minOrderQty: '1',
+        maxOrderQty: '1000000'
+      }
+    };
+  }
+
+  async getTicker(symbol) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    return {
+      code: '200000',
+      data: {
+        price: basePrice,
+        bestBidPrice: basePrice - 0.5,
+        bestAskPrice: basePrice + 0.5,
+        priceChgPct: '0.001',
+        vol24h: '120000'
+      }
+    };
+  }
+
+  buildOrderBook(symbol, depth = 20) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    const bids = [];
+    const asks = [];
+    for (let i = 0; i < depth; i++) {
+      bids.push([(basePrice - i * 0.5).toFixed(2), (10 + i).toString()]);
+      asks.push([(basePrice + i * 0.5).toFixed(2), (10 + i).toString()]);
+    }
+    return { bids, asks };
+  }
+
+  async getOrderBook(symbol, depth = 20) {
+    const ob = this.buildOrderBook(symbol, depth);
+    return { code: '200000', data: ob };
+  }
+
+  async getKlines(symbol, granularity, from, to) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    const candles = [];
+    const step = (granularity || 5) * 60 * 1000;
+    let timestamp = to - step * 120;
+    let price = basePrice;
+    for (let i = 0; i < 120; i++) {
+      const open = price;
+      const close = price + Math.sin(i / 5) * 2;
+      const high = Math.max(open, close) + 1;
+      const low = Math.min(open, close) - 1;
+      candles.push([timestamp, open.toFixed(2), high.toFixed(2), low.toFixed(2), close.toFixed(2), (1000 + i).toFixed(2)]);
+      price = close;
+      timestamp += step;
+    }
+    return { code: '200000', data: candles };
+  }
+
+  async getFundingRate(symbol) {
+    return { code: '200000', data: { value: '0.0001', predictedValue: '0.0002' } };
+  }
+
+  async getAccountOverview() {
+    return { code: '200000', data: { accountEquity: '10000' } };
+  }
+
+  async getPosition() {
+    return { code: '200000', data: null };
+  }
+
+  async getAllPositions() {
+    return { code: '200000', data: [] };
+  }
+
+  async placeOrder(params) {
+    return { code: '200000', data: { orderId: `mock_order_${Date.now()}`, clientOid: params?.clientOid } };
+  }
+
+  async placeStopOrder(params) {
+    return { code: '200000', data: { orderId: `mock_stop_${Date.now()}`, clientOid: params?.clientOid } };
+  }
+
+  async cancelStopOrder(orderId) {
+    return { code: '200000', data: { cancelledOrderIds: [orderId] } };
+  }
+
+  async cancelAllStopOrders() {
+    return { code: '200000', data: { cancelledOrderIds: [] } };
+  }
+
+  async cancelAllOrders() {
+    return { code: '200000', data: { cancelledOrderIds: [] } };
+  }
+
+  async getOpenOrders() {
+    return { code: '200000', data: [] };
+  }
+
+  async getOpenStopOrders() {
+    return { code: '200000', data: [] };
+  }
+
+  async getOrderDetail(orderId) {
+    return { code: '200000', data: { orderId } };
+  }
+
+  async getWebSocketToken() {
+    return { code: '200000', data: { token: 'mock' } };
+  }
+
+  async getPublicWebSocketToken() {
+    return { code: '200000', data: { token: 'mock' } };
+  }
+}
+
+function createKuCoinClient() {
+  if (DEMO_MODE) {
+    return new MockKuCoinFuturesAPI();
+  }
+  return new KuCoinFuturesAPI(KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE);
+}
+
+const kucoinAPI = createKuCoinClient();
 
 // ============================================================================
 // V3.5: API RETRY QUEUE MANAGER
@@ -1686,7 +1853,7 @@ function broadcastInitialState(ws) {
       trading: CONFIG.TRADING,
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
-      version: '3.5.0'
+      version: '3.5.1'
     }
   }));
 }
@@ -2089,7 +2256,7 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
 wss.on('connection', async (ws) => {
   console.log('[WS] Client connected');
   wsClients.add(ws);
-  broadcastLog('success', 'Dashboard connected (V3.5.0)');
+  broadcastLog('success', 'Dashboard connected (V3.5.1)');
 
   broadcastInitialState(ws);
   await fetchAccountBalance();
@@ -2185,7 +2352,7 @@ wss.on('connection', async (ws) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.5.0',
+    version: '3.5.1',
     uptime: process.uptime(),
     symbols: Object.keys(marketManagers).length,
     positions: activePositions.size,
@@ -2197,7 +2364,7 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
-    version: '3.5.0',
+    version: '3.5.1',
     symbols: Object.keys(marketManagers),
     positions: activePositions.size,
     balance: accountBalance,
@@ -2393,77 +2560,88 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Update market data every 3 seconds
-setInterval(async () => {
-  for (const symbol of Object.keys(marketManagers)) {
-    await fetchTicker(symbol);
-    broadcastMarketData(symbol);
-    await sleep(100);
-  }
-}, 3000);
+// Interval management for runtime tasks
+const intervalRefs = [];
 
-// Update order books every 2 seconds
-setInterval(async () => {
-  for (const symbol of Object.keys(marketManagers)) {
-    await fetchOrderBook(symbol);
-    await sleep(100);
-  }
-}, 2000);
-
-// Update positions every 1 second
-setInterval(async () => {
-  for (const [symbol, manager] of activePositions.entries()) {
-    if (marketManagers[symbol]) {
-      const price = marketManagers[symbol].currentPrice;
-      if (price > 0) {
-        await manager.updatePrice(price);
-      }
+function startIntervals() {
+  // Update market data every 3 seconds
+  intervalRefs.push(setInterval(async () => {
+    for (const symbol of Object.keys(marketManagers)) {
+      await fetchTicker(symbol);
+      broadcastMarketData(symbol);
+      await sleep(100);
     }
-  }
-  if (activePositions.size > 0) {
-    broadcastPositions();
-  }
-}, 1000);
+  }, 3000));
 
-// Update balance every 30 seconds
-setInterval(fetchAccountBalance, 30000);
+  // Update order books every 2 seconds
+  intervalRefs.push(setInterval(async () => {
+    for (const symbol of Object.keys(marketManagers)) {
+      await fetchOrderBook(symbol);
+      await sleep(100);
+    }
+  }, 2000));
 
-// Update funding rates every 5 minutes
-setInterval(async () => {
-  for (const symbol of Object.keys(marketManagers)) {
-    await fetchFundingRate(symbol);
-    await sleep(100);
-  }
-}, 300000);
-
-// V3.5: Process retry queue every 10 seconds
-setInterval(() => {
-  retryQueueManager.process();
-}, 10000);
-
-// Sync positions from KuCoin every minute
-setInterval(async () => {
-  try {
-    const response = await kucoinAPI.getAllPositions();
-    if (response.data) {
-      for (const pos of response.data) {
-        if (pos.currentQty !== 0) {
-          const symbol = pos.symbol;
-          const manager = activePositions.get(symbol);
-          
-          if (manager && manager.status === 'pending') {
-            manager.status = 'open';
-            manager.entryPrice = parseFloat(pos.avgEntryPrice);
-            broadcastLog('success', `[${symbol}] Position filled @ ${manager.entryPrice}`);
-            savePositions();
-          }
+  // Update positions every 1 second
+  intervalRefs.push(setInterval(async () => {
+    for (const [symbol, manager] of activePositions.entries()) {
+      if (marketManagers[symbol]) {
+        const price = marketManagers[symbol].currentPrice;
+        if (price > 0) {
+          await manager.updatePrice(price);
         }
       }
     }
-  } catch (error) {
-    // Silently handle sync errors
+    if (activePositions.size > 0) {
+      broadcastPositions();
+    }
+  }, 1000));
+
+  // Update balance every 30 seconds
+  intervalRefs.push(setInterval(fetchAccountBalance, 30000));
+
+  // Update funding rates every 5 minutes
+  intervalRefs.push(setInterval(async () => {
+    for (const symbol of Object.keys(marketManagers)) {
+      await fetchFundingRate(symbol);
+      await sleep(100);
+    }
+  }, 300000));
+
+  // V3.5: Process retry queue every 10 seconds
+  intervalRefs.push(setInterval(() => {
+    retryQueueManager.process();
+  }, 10000));
+
+  // Sync positions from KuCoin every minute
+  intervalRefs.push(setInterval(async () => {
+    try {
+      const response = await kucoinAPI.getAllPositions();
+      if (response.data) {
+        for (const pos of response.data) {
+          if (pos.currentQty !== 0) {
+            const symbol = pos.symbol;
+            const manager = activePositions.get(symbol);
+            
+            if (manager && manager.status === 'pending') {
+              manager.status = 'open';
+              manager.entryPrice = parseFloat(pos.avgEntryPrice);
+              broadcastLog('success', `[${symbol}] Position filled @ ${manager.entryPrice}`);
+              savePositions();
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Silently handle sync errors
+    }
+  }, 60000));
+}
+
+function stopIntervals() {
+  while (intervalRefs.length) {
+    clearInterval(intervalRefs.pop());
   }
-}, 60000);
+}
 
 // ============================================================================
 // STARTUP
@@ -2471,7 +2649,7 @@ setInterval(async () => {
 async function startup() {
   console.log('');
   console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.0                 ║');
+  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.1                 ║');
   console.log('║     Semi-Automated Trading System                             ║');
   console.log('║                                                               ║');
   console.log('║     V3.5 ENHANCEMENTS:                                        ║');
@@ -2510,6 +2688,10 @@ async function startup() {
   // Initialize market data
   await initializeAllSymbols();
 
+  if (SHOULD_START_INTERVALS) {
+    startIntervals();
+  }
+
   // Start server
   server.listen(CONFIG.PORT, () => {
     console.log('');
@@ -2528,6 +2710,7 @@ process.on('SIGINT', () => {
   console.log('[SHUTDOWN] Saving retry queue...');
   retryQueueManager.save();
   console.log('[SHUTDOWN] Closing connections...');
+  stopIntervals();
   wsClients.forEach(ws => ws.close());
   server.close();
   console.log('[SHUTDOWN] Goodbye!');
@@ -2540,8 +2723,21 @@ process.on('uncaughtException', (error) => {
   retryQueueManager.save();
 });
 
-// Start the server
-startup().catch(error => {
-  console.error('[STARTUP ERROR]', error);
-  process.exit(1);
-});
+// Start the server when executed directly
+if (require.main === module) {
+  startup().catch(error => {
+    console.error('[STARTUP ERROR]', error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  TradeMath,
+  TechnicalIndicators,
+  CONFIG,
+  KuCoinFuturesAPI,
+  MockKuCoinFuturesAPI,
+  createKuCoinClient,
+  startIntervals,
+  stopIntervals
+};
