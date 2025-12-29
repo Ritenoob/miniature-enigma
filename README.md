@@ -147,6 +147,22 @@ npm start
 
 Navigate to `http://localhost:3001`
 
+### 5. Run the Python MACD Strategy (ETH/USDT Perps @ 100×)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # add your KuCoin API credentials
+python eth_macd_strategy.py
+```
+
+**Python strategy highlights**
+- Mirrors the provided Pine Script MACD + signal-strength filter for ETH/USDT perpetuals at 100× leverage.
+- Uses the account’s available USDT as starting capital; position sizing is percent-of-balance (default 1%).
+- Risk controls: static SL at -9% ROI until trailing activates; trailing starts at +10% ROI and ratchets every +8% ROI; default TP at +1% ROI.
+- Safe by default (`KUCOIN_EXECUTE_TRADES=false`); set to `true` in `.env` to place live orders.
+
 ---
 
 ## 🎛️ Configuration
