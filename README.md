@@ -1,10 +1,22 @@
-# KuCoin Perpetual Futures Dashboard v3.5.1
+# KuCoin Perpetual Futures Dashboard v3.5.2
 
-## 🚀 V3.5 Enhancements
+## 🚀 V3.5.2 Comprehensive Upgrade
 
-This version implements comprehensive improvements based on the PDF documentation for accurate trading calculations, position management, and risk control.
+This version implements **production-grade reliability and precision** with decimal.js math, order validation, config validation, and comprehensive testing.
 
-### Key Features
+### V3.5.2 New Features
+
+| Feature | Description |
+|---------|-------------|
+| **Precision-Safe Math** | All financial calculations use decimal.js to eliminate floating-point errors |
+| **Order Validation Layer** | All exit orders validated and enforced with `reduceOnly: true` flag |
+| **Config Validation** | Configuration validated at startup with clear error messages |
+| **Property-Based Tests** | Comprehensive edge case coverage with fast-check library |
+| **Stop Order State Machine** | Prevents cancel-then-fail exposure (library ready, integration optional) |
+| **Secure Logging** | API key/secret redaction utilities (library ready, integration optional) |
+| **Hot/Cold Path Architecture** | Event bus for latency-sensitive operations (library ready, integration optional) |
+
+### V3.5.1 Features (Previously Added)
 
 | Feature | Description |
 |---------|-------------|
@@ -16,6 +28,107 @@ This version implements comprehensive improvements based on the PDF documentatio
 | **Volatility-Based Leverage** | Auto-leverage mode adjusts based on ATR percentage |
 | **Enhanced Trailing Stops** | Three modes: Staircase, ATR-Based, and Dynamic |
 | **Net P&L Display** | Shows both gross and net profit/loss after fees |
+
+---
+
+## 🏗️ Architecture (V3.5.2)
+
+### New Module Structure
+
+```
+src/
+├── lib/
+│   ├── DecimalMath.js           # Precision-safe financial calculations
+│   ├── StopOrderStateMachine.js # State machine for stop protection
+│   ├── OrderValidator.js        # Order validation & reduceOnly enforcement
+│   ├── ConfigSchema.js          # Config validation schema
+│   ├── SecureLogger.js          # Redacted logging utilities
+│   ├── EventBus.js              # Hot/cold path event bus
+│   └── index.js                 # Module exports
+```
+
+### DecimalMath
+
+All `TradeMath` functions now use `decimal.js` internally for precision:
+
+```javascript
+// Example: No more 0.1 + 0.2 = 0.30000000000000004
+const margin = DecimalMath.calculateMarginUsed(10000, 0.5);
+// Returns exact: 50 (not 50.00000000000001)
+```
+
+**Key Benefits:**
+- Eliminates floating-point arithmetic errors
+- Maintains precision in fee calculations
+- Accurate ROI and P&L calculations
+- Returns plain numbers for JSON serialization
+
+### OrderValidator
+
+Enforces safety on all exit orders:
+
+```javascript
+// Validates reduceOnly flag
+OrderValidator.validateExitOrder(params);  // throws if invalid
+OrderValidator.validateStopOrder(params);  // validates stop orders
+
+// Sanitizes and enforces reduceOnly
+const safeParams = OrderValidator.sanitize(params, 'exit');
+```
+
+**Applied to:**
+- Stop loss orders (updateStopLossOrder)
+- Take profit orders (executeEntry)
+- Partial TP orders (executePartialTakeProfit)
+- Close position orders (closePosition)
+
+### ConfigSchema
+
+Validates configuration at startup:
+
+```javascript
+// Checks all config values against schema
+validateConfig(CONFIG);
+
+// Example validation rules:
+// - INITIAL_SL_ROI: 0.01-100
+// - DEFAULT_LEVERAGE: 1-100
+// - TRAILING_MODE: 'staircase' | 'atr' | 'dynamic'
+// - MAKER_FEE: 0-0.1
+```
+
+**Benefits:**
+- Catches configuration errors early
+- Applies defaults for missing values
+- Clear error messages with field names
+- Prevents invalid leverage/fee values
+
+### Property-Based Testing
+
+Comprehensive tests with fast-check:
+
+```javascript
+// Example: SL is always less than entry for longs
+fc.assert(
+  fc.property(
+    fc.double({ min: 100, max: 100000 }),  // entry
+    fc.double({ min: 0.1, max: 50 }),      // ROI
+    fc.integer({ min: 1, max: 100 }),      // leverage
+    (entry, roi, leverage) => {
+      const sl = DecimalMath.calculateStopLossPrice('long', entry, roi, leverage);
+      return sl < entry;  // Always true
+    }
+  )
+);
+```
+
+**Test Coverage:**
+- SL/TP price direction invariants
+- Fee-adjusted break-even properties
+- Trailing stop movement rules
+- Position value calculations
+- Net P&L comparisons
+- Price rounding properties
 
 ---
 
