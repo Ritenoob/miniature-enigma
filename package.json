@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:rate-limit": "node --test tests/pingBudgetManager*.test.js",
+    "research:shadow": "node research/scripts/run-shadow.js"
   },
   "keywords": [
     "kucoin",
