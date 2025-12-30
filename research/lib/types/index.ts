@@ -494,48 +494,5 @@ export interface StrategyProfile {
 }
 
 // ============================================================================
-// Export all types
+// Types are exported via export interface/export type declarations above
 // ============================================================================
-
-export type {
-  Candle,
-  SymbolData,
-  Indicators,
-  KDJResult,
-  ADXResult,
-  SignalType,
-  ConfidenceLevel,
-  SignalBreakdown,
-  Signal,
-  WeightConfig,
-  Weights,
-  Thresholds,
-  SignalConfig,
-  PositionSide,
-  FillModel,
-  SlippageModel,
-  RegimeType,
-  Position,
-  Trade,
-  BacktestConfig,
-  BacktestResult,
-  EquityPoint,
-  RegimeInfo,
-  PerformanceMetrics,
-  RegimePerformance,
-  WalkForwardConfig,
-  WalkForwardFold,
-  WalkForwardResult,
-  ParameterRange,
-  SearchSpace,
-  OptimizationConfig,
-  OptimizationObjective,
-  OptimizationConstraint,
-  Candidate,
-  OptimizationResult,
-  ShadowConfig,
-  ABTestConfig,
-  LiveMetrics,
-  StrategyTemplate,
-  StrategyProfile
-};
