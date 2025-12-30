@@ -1,8 +1,18 @@
 // ============================================================================
 // KuCoin Perpetual Futures Dashboard - Semi-Automated Trading System
-// Version: 3.5.1
+// Version: 3.5.2
 // 
-// CHANGELOG FROM V3.4.2:
+// CHANGELOG FROM V3.5.1:
+// - **V3.5.2 ENHANCEMENTS:**
+// - Precision-safe financial math with decimal.js (eliminates floating-point errors)
+// - Stop order state machine for protection against cancel-then-fail exposure
+// - Order validation layer enforcing reduceOnly on all exit orders
+// - Config schema validation at startup with clear error messages
+// - API key/secret redaction in logs for security
+// - Hot/cold path event architecture for latency-sensitive operations
+// - Property-based tests with fast-check for comprehensive edge case coverage
+// 
+// - **Previous V3.5.1 features:**
 // - Fee-adjusted break-even calculation (accounts for maker/taker fees)
 // - Accurate liquidation price formula with maintenance margin
 // - Slippage buffer on stop placement
@@ -1365,7 +1375,7 @@ class PositionManager {
   }
 
   /**
-   * V3.5: Update stop loss order with slippage buffer and retry queue
+   * V3.5.2: Update stop loss order with validation, slippage buffer and retry queue
    */
   async updateStopLossOrder() {
     try {
@@ -1390,9 +1400,9 @@ class PositionManager {
         }
       }
 
-      // Place new SL order with reduce-only flag
+      // V3.5.2: Build and validate stop order params
       const slSide = this.side === 'long' ? 'sell' : 'buy';
-      const slParams = {
+      let slParams = {
         clientOid: `sl_${this.symbol}_${Date.now()}`,
         side: slSide,
         symbol: this.symbol,
@@ -1401,8 +1411,12 @@ class PositionManager {
         stopPrice: roundedSL.toString(),
         stopPriceType: 'TP',
         size: this.remainingSize.toString(),
-        reduceOnly: true  // V3.5: Critical safety flag
+        reduceOnly: true
       };
+      
+      // V3.5.2: Validate and sanitize order
+      OrderValidator.validateStopOrder(slParams);
+      slParams = OrderValidator.sanitize(slParams, 'stop');
 
       const result = await this.api.placeStopOrder(slParams);
       if (result.data) {
@@ -1446,7 +1460,7 @@ class PositionManager {
     
     try {
       const closeSide = this.side === 'long' ? 'sell' : 'buy';
-      const closeParams = {
+      let closeParams = {
         clientOid: `partial_tp_${this.symbol}_${Date.now()}`,
         side: closeSide,
         symbol: this.symbol,
@@ -1454,6 +1468,10 @@ class PositionManager {
         size: closeSize.toString(),
         reduceOnly: true
       };
+      
+      // V3.5.2: Validate and sanitize exit order
+      OrderValidator.validateExitOrder(closeParams);
+      closeParams = OrderValidator.sanitize(closeParams, 'exit');
 
       const result = await this.api.placeOrder(closeParams);
       
@@ -1491,7 +1509,7 @@ class PositionManager {
 
       // Place market order to close
       const closeSide = this.side === 'long' ? 'sell' : 'buy';
-      const closeParams = {
+      let closeParams = {
         clientOid: `close_${this.symbol}_${Date.now()}`,
         side: closeSide,
         symbol: this.symbol,
@@ -1499,6 +1517,10 @@ class PositionManager {
         size: this.remainingSize.toString(),
         reduceOnly: true
       };
+      
+      // V3.5.2: Validate and sanitize exit order
+      OrderValidator.validateExitOrder(closeParams);
+      closeParams = OrderValidator.sanitize(closeParams, 'exit');
 
       const result = await this.api.placeOrder(closeParams);
       
@@ -1707,7 +1729,7 @@ function broadcastInitialState(ws) {
       trading: CONFIG.TRADING,
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
-      version: '3.5.1'
+      version: '3.5.2'
     }
   }));
 }
@@ -1996,12 +2018,12 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
     const entryOrderId = entryResult.data.orderId;
     broadcastLog('success', `[${symbol}] Entry order placed: ${entryOrderId}`);
 
-    // V3.5: Place SL order with slippage buffer
+    // V3.5.2: Place SL order with slippage buffer and validation
     const slippageAdjustedSL = TradeMath.calculateSlippageAdjustedStop(side, roundedSL, CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT);
     const finalSL = TradeMath.roundToTickSize(slippageAdjustedSL, tickSize);
     
     const slSide = side === 'long' ? 'sell' : 'buy';
-    const slParams = {
+    let slParams = {
       clientOid: `sl_${symbol}_${Date.now()}`,
       side: slSide,
       symbol: symbol,
@@ -2012,6 +2034,10 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       size: size.toString(),
       reduceOnly: true
     };
+    
+    // V3.5.2: Validate and sanitize stop order
+    OrderValidator.validateStopOrder(slParams);
+    slParams = OrderValidator.sanitize(slParams, 'stop');
 
     let slOrderId = null;
     try {
@@ -2030,9 +2056,9 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       });
     }
 
-    // Place TP order
+    // V3.5.2: Place TP order with validation
     const tpSide = side === 'long' ? 'sell' : 'buy';
-    const tpParams = {
+    let tpParams = {
       clientOid: `tp_${symbol}_${Date.now()}`,
       side: tpSide,
       symbol: symbol,
@@ -2042,6 +2068,10 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       reduceOnly: true,
       timeInForce: 'GTC'
     };
+    
+    // V3.5.2: Validate and sanitize exit order
+    OrderValidator.validateExitOrder(tpParams);
+    tpParams = OrderValidator.sanitize(tpParams, 'exit');
 
     let tpOrderId = null;
     try {
@@ -2206,7 +2236,7 @@ wss.on('connection', async (ws) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.5.1',
+    version: '3.5.2',
     uptime: process.uptime(),
     symbols: Object.keys(marketManagers).length,
     positions: activePositions.size,
@@ -2218,7 +2248,7 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
-    version: '3.5.1',
+    version: '3.5.2',
     symbols: Object.keys(marketManagers),
     positions: activePositions.size,
     balance: accountBalance,
@@ -2503,7 +2533,7 @@ function stopIntervals() {
 async function startup() {
   console.log('');
   console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.1                 ║');
+  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.2                 ║');
   console.log('║     Semi-Automated Trading System                             ║');
   console.log('║                                                               ║');
   console.log('║     V3.5 ENHANCEMENTS:                                        ║');
