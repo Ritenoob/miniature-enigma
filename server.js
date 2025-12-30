@@ -26,6 +26,15 @@ const fs = require('fs');
 const { EventEmitter } = require('events');
 
 // ============================================================================
+// V3.5.2: Import new precision and safety modules
+// ============================================================================
+const DecimalMath = require('./src/lib/DecimalMath');
+const { validateConfig } = require('./src/lib/ConfigSchema');
+const SecureLogger = require('./src/lib/SecureLogger');
+const OrderValidator = require('./src/lib/OrderValidator');
+// Note: StopOrderStateMachine and EventBus are initialized per-position/global
+
+// ============================================================================
 // CONFIGURATION
 // ============================================================================
 const CONFIG = {
@@ -105,6 +114,18 @@ const CONFIG = {
 };
 
 // ============================================================================
+// V3.5.2: VALIDATE CONFIGURATION AT STARTUP
+// ============================================================================
+try {
+  validateConfig(CONFIG);
+  console.log('[INIT] ✓ Configuration validated successfully');
+} catch (error) {
+  console.error('[INIT] ✗ Configuration validation failed:');
+  console.error(error.message);
+  process.exit(1);
+}
+
+// ============================================================================
 // EXPRESS & WEBSOCKET SETUP
 // ============================================================================
 const app = express();
@@ -169,207 +190,40 @@ let currentTimeframe = '5min';
 let accountBalance = 0;
 
 // ============================================================================
-// V3.5 MATH UTILITIES - FROM PDF DOCUMENTATION
+// V3.5.2: PRECISION-SAFE MATH UTILITIES USING DECIMAL.JS
+// TradeMath now wraps DecimalMath for backward compatibility
 // ============================================================================
 const TradeMath = {
+  // All calculation methods now use DecimalMath for precision
+  calculateMarginUsed: DecimalMath.calculateMarginUsed.bind(DecimalMath),
+  calculatePositionValue: DecimalMath.calculatePositionValue.bind(DecimalMath),
+  calculateLotSize: DecimalMath.calculateLotSize.bind(DecimalMath),
+  calculatePriceDiff: DecimalMath.calculatePriceDiff.bind(DecimalMath),
+  calculateUnrealizedPnl: DecimalMath.calculateUnrealizedPnl.bind(DecimalMath),
+  calculateLeveragedPnlPercent: DecimalMath.calculateLeveragedPnlPercent.bind(DecimalMath),
+  calculateFeeAdjustedBreakEven: DecimalMath.calculateFeeAdjustedBreakEven.bind(DecimalMath),
+  calculateTotalFees: DecimalMath.calculateTotalFees.bind(DecimalMath),
+  calculateNetPnl: DecimalMath.calculateNetPnl.bind(DecimalMath),
+  calculateStopLossPrice: DecimalMath.calculateStopLossPrice.bind(DecimalMath),
+  calculateTakeProfitPrice: DecimalMath.calculateTakeProfitPrice.bind(DecimalMath),
+  calculateLiquidationPrice: DecimalMath.calculateLiquidationPrice.bind(DecimalMath),
+  calculateSlippageAdjustedStop: DecimalMath.calculateSlippageAdjustedStop.bind(DecimalMath),
+  calculateTrailingSteps: DecimalMath.calculateTrailingSteps.bind(DecimalMath),
+  calculateTrailedStopLoss: DecimalMath.calculateTrailedStopLoss.bind(DecimalMath),
+  calculateATRTrailingDistance: DecimalMath.calculateATRTrailingDistance.bind(DecimalMath),
+  roundToTickSize: DecimalMath.roundToTickSize.bind(DecimalMath),
+  roundToLotSize: DecimalMath.roundToLotSize.bind(DecimalMath),
+  
   /**
-   * Calculate margin used for a position
-   * Formula: marginUsed = accountBalance × (positionPercent / 100)
-   */
-  calculateMarginUsed(accountBalance, positionPercent) {
-    return accountBalance * (positionPercent / 100);
-  },
-
-  /**
-   * Calculate position value with leverage
-   * Formula: positionValueUSD = marginUsed × leverage
-   */
-  calculatePositionValue(marginUsed, leverage) {
-    return marginUsed * leverage;
-  },
-
-  /**
-   * Calculate contract size (lots)
-   * Formula: size = floor(positionValueUSD / (entryPrice × multiplier))
-   */
-  calculateLotSize(positionValueUSD, entryPrice, multiplier = 1) {
-    return Math.floor(positionValueUSD / (entryPrice * multiplier));
-  },
-
-  /**
-   * Calculate price difference based on position side
-   * Long: priceDiff = currentPrice - entryPrice
-   * Short: priceDiff = entryPrice - currentPrice
-   */
-  calculatePriceDiff(side, entryPrice, currentPrice) {
-    return side === 'long' 
-      ? currentPrice - entryPrice 
-      : entryPrice - currentPrice;
-  },
-
-  /**
-   * Calculate unrealized P&L in USDT
-   * Formula: unrealizedPnl = priceDiff × size × multiplier
-   */
-  calculateUnrealizedPnl(priceDiff, size, multiplier = 1) {
-    return priceDiff * size * multiplier;
-  },
-
-  /**
-   * Calculate leveraged P&L percentage (ROI)
-   * Formula: leveragedPnlPercent = (unrealizedPnl / marginUsed) × 100
-   * This is the ACTUAL return on invested capital, not just price movement
-   */
-  calculateLeveragedPnlPercent(unrealizedPnl, marginUsed) {
-    if (marginUsed === 0) return 0;
-    return (unrealizedPnl / marginUsed) * 100;
-  },
-
-  /**
-   * V3.5 NEW: Calculate fee-adjusted break-even threshold
-   * Formula: breakEvenROI = (entryFee + exitFee) × leverage × 100 + buffer
-   * 
-   * Example: 0.06% taker fee, 10x leverage
-   * breakEvenROI = (0.0006 + 0.0006) × 10 × 100 + 0.1 = 1.2% + 0.1% = 1.3%
-   */
-  calculateFeeAdjustedBreakEven(entryFee, exitFee, leverage, buffer = 0.1) {
-    return ((entryFee + exitFee) * leverage * 100) + buffer;
-  },
-
-  /**
-   * V3.5 NEW: Calculate total trading fees
-   * Fees are charged on notional value (margin × leverage)
-   */
-  calculateTotalFees(positionValueUSD, entryFee, exitFee) {
-    return positionValueUSD * (entryFee + exitFee);
-  },
-
-  /**
-   * V3.5 NEW: Calculate net P&L after fees
-   * Formula: netPnl = grossPnl - entryFee - exitFee - fundingFees
-   */
-  calculateNetPnl(grossPnl, positionValueUSD, entryFee, exitFee, fundingFees = 0) {
-    const totalFees = this.calculateTotalFees(positionValueUSD, entryFee, exitFee);
-    return grossPnl - totalFees - fundingFees;
-  },
-
-  /**
-   * Calculate ROI-based stop loss price
-   * Formula (Long): SL = entry × (1 - ROI_risk / leverage / 100)
-   * Formula (Short): SL = entry × (1 + ROI_risk / leverage / 100)
-   * 
-   * This ensures SL/TP are defined by desired ROI, not raw price movement
-   */
-  calculateStopLossPrice(side, entryPrice, roiRisk, leverage) {
-    const pricePercent = (roiRisk / leverage) / 100;
-    return side === 'long'
-      ? entryPrice * (1 - pricePercent)
-      : entryPrice * (1 + pricePercent);
-  },
-
-  /**
-   * Calculate ROI-based take profit price
-   * Formula (Long): TP = entry × (1 + ROI_reward / leverage / 100)
-   * Formula (Short): TP = entry × (1 - ROI_reward / leverage / 100)
-   */
-  calculateTakeProfitPrice(side, entryPrice, roiReward, leverage) {
-    const pricePercent = (roiReward / leverage) / 100;
-    return side === 'long'
-      ? entryPrice * (1 + pricePercent)
-      : entryPrice * (1 - pricePercent);
-  },
-
-  /**
-   * V3.5 NEW: Calculate liquidation price with maintenance margin
-   * Formula (Long): liqPrice = entry - (entry / leverage × (1 + maintMargin))
-   * Formula (Short): liqPrice = entry + (entry / leverage × (1 + maintMargin))
-   * 
-   * Example: Long @ $10,000, 10x leverage, 0.5% maint margin
-   * liqPrice = 10000 - (10000/10 × 1.005) = 10000 - 1005 = $8,995
-   */
-  calculateLiquidationPrice(side, entryPrice, leverage, maintMarginPercent = 0.5) {
-    const maintMarginFactor = 1 + (maintMarginPercent / 100);
-    const leverageImpact = (entryPrice / leverage) * maintMarginFactor;
-    
-    return side === 'long'
-      ? entryPrice - leverageImpact
-      : entryPrice + leverageImpact;
-  },
-
-  /**
-   * V3.5 NEW: Calculate slippage-adjusted stop price
-   * Adds a buffer to account for market order execution slippage
-   */
-  calculateSlippageAdjustedStop(side, stopPrice, slippagePercent) {
-    const slippageFactor = slippagePercent / 100;
-    return side === 'long'
-      ? stopPrice * (1 - slippageFactor)  // Lower stop for longs
-      : stopPrice * (1 + slippageFactor); // Higher stop for shorts
-  },
-
-  /**
-   * Calculate trailing stop steps (staircase algorithm)
-   * Formula: steps = floor((currentROI - lastTrailedROI) / stepPercent)
-   */
-  calculateTrailingSteps(currentROI, lastTrailedROI, stepPercent) {
-    if (currentROI <= lastTrailedROI) return 0;
-    return Math.floor((currentROI - lastTrailedROI) / stepPercent);
-  },
-
-  /**
-   * Calculate new stop loss after trailing
-   * Formula (Long): newSL = currentSL × (1 + steps × movePercent / 100)
-   * Formula (Short): newSL = currentSL × (1 - steps × movePercent / 100)
-   */
-  calculateTrailedStopLoss(side, currentSL, steps, movePercent) {
-    const totalMove = steps * movePercent / 100;
-    return side === 'long'
-      ? currentSL * (1 + totalMove)
-      : currentSL * (1 - totalMove);
-  },
-
-  /**
-   * V3.5 NEW: Calculate ATR-based trailing distance
-   * Formula: trailingDistance = ATR × multiplier
-   */
-  calculateATRTrailingDistance(atr, multiplier = 1.5) {
-    return atr * multiplier;
-  },
-
-  /**
-   * V3.5 NEW: Calculate volatility-based recommended leverage
+   * Calculate volatility-based recommended leverage
    * Uses ATR percentage to determine safe leverage tier
    */
   calculateAutoLeverage(atrPercent, riskMultiplier = 1.0) {
-    const tiers = CONFIG.TRADING.AUTO_LEVERAGE_TIERS;
-    
-    let baseLeverage = 3; // Default to safest
-    for (const tier of tiers) {
-      if (atrPercent < tier.maxVolatility) {
-        baseLeverage = tier.leverage;
-        break;
-      }
-    }
-    
-    // Apply risk multiplier and clamp between 1-100
-    const adjustedLeverage = Math.round(baseLeverage * riskMultiplier);
-    return Math.max(1, Math.min(100, adjustedLeverage));
-  },
-
-  /**
-   * Round price to tick size and clean floating point errors
-   */
-  roundToTickSize(price, tickSize) {
-    const decimals = tickSize.toString().split('.')[1]?.length || 0;
-    const rounded = Math.round(price / tickSize) * tickSize;
-    return parseFloat(rounded.toFixed(decimals));
-  },
-
-  /**
-   * Round lots to lot size
-   */
-  roundToLotSize(lots, lotSize) {
-    return Math.floor(lots / lotSize) * lotSize;
+    return DecimalMath.calculateAutoLeverage(
+      atrPercent, 
+      riskMultiplier, 
+      CONFIG.TRADING.AUTO_LEVERAGE_TIERS
+    );
   }
 };
 
