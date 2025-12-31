@@ -8,6 +8,8 @@ const OrderValidator = require('./OrderValidator');
 const { ConfigSchema, validateConfig, validatePartialConfig, getSchemaDocumentation } = require('./ConfigSchema');
 const SecureLogger = require('./SecureLogger');
 const { TradingEventBus, getEventBus } = require('./EventBus');
+const PingBudgetManager = require('./PingBudgetManager');
+const telemetry = require('./telemetry');
 
 module.exports = {
   // Math utilities
@@ -28,5 +30,11 @@ module.exports = {
   
   // Event system
   TradingEventBus,
-  getEventBus
+  getEventBus,
+  
+  // Rate limiting
+  PingBudgetManager,
+  
+  // Telemetry
+  telemetry
 };

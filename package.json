@@ -1,12 +1,20 @@
 {
-  "name": "kucoin-futures-dashboard",
-  "version": "3.5.2",
-  "description": "KuCoin Perpetual Futures Semi-Automated Trading Dashboard with V3.5 Enhancements",
-  "main": "server.js",
+  "name": "mirko-kucoin-futures",
+  "version": "3.5.0",
+  "description": "MIRKO V3.5 - KuCoin Perpetual Futures Trading System with Advanced Screener and Optimizer",
+  "main": "core/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test": "node --test"
+    "start": "node core/server.js",
+    "dev": "node --watch core/server.js",
+    "screener": "node screener/screenerEngine.js",
+    "optimizer": "node strategy/optimizer/optimizerEngine.js",
+    "backtest": "node scripts/backtest-runner.js",
+    "test": "node --test",
+    "test:unit": "node --test test/unit",
+    "test:property": "node --test test/property",
+    "adjust-weights": "node core/adjust-weights.js",
+    "fetch-data": "node research/data/fetch_ohlcv.js",
+    "export-signals": "node scripts/export-signals.js"
   },
   "keywords": [
     "kucoin",
@@ -15,9 +23,10 @@
     "dashboard",
     "cryptocurrency",
     "signals",
-    "trailing-stop",
-    "break-even",
-    "leverage"
+    "screener",
+    "optimizer",
+    "mirko",
+    "v3.5"
   ],
   "author": "",
   "license": "MIT",
