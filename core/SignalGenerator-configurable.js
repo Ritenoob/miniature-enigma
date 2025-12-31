@@ -4,8 +4,6 @@
  * Supports KDJ, OBV, DOM integration
  */
 
-const DecimalMath = require('../src/lib/DecimalMath');
-
 class SignalGenerator {
   constructor(weightsConfig) {
     this.weightsConfig = weightsConfig;
@@ -115,13 +113,13 @@ class SignalGenerator {
     } else if (rsi <= oversoldMild) {
       // Linear interpolation between oversold and oversoldMild
       const ratio = (oversoldMild - rsi) / (oversoldMild - oversold);
-      return DecimalMath.multiply(max * 0.7, ratio);
+      return (max * 0.7) * (ratio);
     } else if (rsi >= overbought) {
       return -max; // Strong bearish
     } else if (rsi >= overboughtMild) {
       // Linear interpolation between overboughtMild and overbought
       const ratio = (rsi - overboughtMild) / (overbought - overboughtMild);
-      return DecimalMath.multiply(-max * 0.7, ratio);
+      return (-max * 0.7) * (ratio);
     }
 
     return 0; // Neutral
@@ -137,12 +135,12 @@ class SignalGenerator {
       return max; // Oversold = bullish
     } else if (williamsR <= oversold + (overbought - oversold) * 0.3) {
       const ratio = (williamsR - oversold) / ((overbought - oversold) * 0.3);
-      return DecimalMath.multiply(max, 1 - ratio);
+      return (max) * (1 - ratio);
     } else if (williamsR >= overbought) {
       return -max; // Overbought = bearish
     } else if (williamsR >= overbought - (overbought - oversold) * 0.3) {
       const ratio = (williamsR - (overbought - (overbought - oversold) * 0.3)) / ((overbought - oversold) * 0.3);
-      return DecimalMath.multiply(-max, ratio);
+      return (-max) * (ratio);
     }
 
     return 0;
@@ -159,9 +157,9 @@ class SignalGenerator {
 
     // MACD crosses above signal = bullish
     if (histogram > 0) {
-      score = DecimalMath.multiply(max, Math.min(1, histogram / 10));
+      score = (max) * (Math.min(1, histogram / 10));
     } else {
-      score = DecimalMath.multiply(-max, Math.min(1, Math.abs(histogram) / 10));
+      score = (-max) * (Math.min(1, Math.abs(histogram) / 10));
     }
 
     return score;
@@ -174,9 +172,9 @@ class SignalGenerator {
     const { max } = config;
     
     if (ao > 0) {
-      return DecimalMath.multiply(max, Math.min(1, ao / 50));
+      return (max) * (Math.min(1, ao / 50));
     } else {
-      return DecimalMath.multiply(-max, Math.min(1, Math.abs(ao) / 50));
+      return (-max) * (Math.min(1, Math.abs(ao) / 50));
     }
   }
 
@@ -195,9 +193,9 @@ class SignalGenerator {
     } else if (price < emaFast && emaFast < emaSlow) {
       score = -max;
     } else if (price > emaFast) {
-      score = DecimalMath.multiply(max, 0.5);
+      score = (max) * (0.5);
     } else if (price < emaFast) {
-      score = DecimalMath.multiply(-max, 0.5);
+      score = (-max) * (0.5);
     }
 
     return score;
@@ -215,9 +213,9 @@ class SignalGenerator {
     } else if (k >= overbought && d >= overbought) {
       return -max;
     } else if (k <= oversold || d <= oversold) {
-      return DecimalMath.multiply(max, 0.6);
+      return (max) * (0.6);
     } else if (k >= overbought || d >= overbought) {
-      return DecimalMath.multiply(-max, 0.6);
+      return (-max) * (0.6);
     }
 
     return 0;
@@ -260,7 +258,7 @@ class SignalGenerator {
       // Moderate signal based on position
       const range = jOverbought - jOversold;
       const position = (j - jOversold) / range;
-      score = DecimalMath.multiply(max, 0.5 - position);
+      score = (max) * (0.5 - position);
     }
 
     return score;
@@ -277,16 +275,16 @@ class SignalGenerator {
 
     // Positive slope = accumulation = bullish
     if (obvSlope > 0) {
-      score = DecimalMath.multiply(max, Math.min(1, obvSlope / 100));
+      score = (max) * (Math.min(1, obvSlope / 100));
     } else {
-      score = DecimalMath.multiply(-max, Math.min(1, Math.abs(obvSlope) / 100));
+      score = (-max) * (Math.min(1, Math.abs(obvSlope) / 100));
     }
 
     // Boost if OBV above EMA
     if (obvValue > obvEma) {
-      score = DecimalMath.multiply(score, 1.2);
+      score = (score) * (1.2);
     } else {
-      score = DecimalMath.multiply(score, 0.8);
+      score = (score) * (0.8);
     }
 
     return Math.max(-max, Math.min(max, score));
@@ -306,9 +304,9 @@ class SignalGenerator {
 
     // Imbalance: positive = more bids = bullish
     if (Math.abs(imbalance) >= imbalanceThreshold) {
-      score = DecimalMath.multiply(max, imbalance);
+      score = (max) * (imbalance);
     } else {
-      score = DecimalMath.multiply(max * 0.5, imbalance);
+      score = (max * 0.5) * (imbalance);
     }
 
     return score;
