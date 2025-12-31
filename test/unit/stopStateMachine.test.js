@@ -3,7 +3,7 @@ process.env.RUN_INTERVALS = 'false';
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const StopOrderStateMachine = require('../src/lib/StopOrderStateMachine');
+const StopOrderStateMachine = require('../../src/lib/StopOrderStateMachine');
 
 describe('StopOrderStateMachine', () => {
   

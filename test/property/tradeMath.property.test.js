@@ -4,7 +4,7 @@ process.env.RUN_INTERVALS = 'false';
 const fc = require('fast-check');
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const DecimalMath = require('../src/lib/DecimalMath');
+const DecimalMath = require('../../src/lib/DecimalMath');
 
 describe('TradeMath Property-Based Tests', () => {
   

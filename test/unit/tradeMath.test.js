@@ -3,7 +3,7 @@ process.env.RUN_INTERVALS = 'false';
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { TradeMath } = require('../server');
+const { TradeMath } = require('../../core/server');
 
 describe('TradeMath core formulas', () => {
   test('calculates position sizing using account percentage and leverage', () => {

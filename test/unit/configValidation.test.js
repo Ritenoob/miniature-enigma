@@ -3,7 +3,7 @@ process.env.RUN_INTERVALS = 'false';
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { validateConfig, validatePartialConfig, ConfigSchema } = require('../src/lib/ConfigSchema');
+const { validateConfig, validatePartialConfig, ConfigSchema } = require('../../src/lib/ConfigSchema');
 
 describe('ConfigSchema Validation', () => {
   
