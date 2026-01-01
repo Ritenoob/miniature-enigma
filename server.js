@@ -45,6 +45,13 @@ const OrderValidator = require('./src/lib/OrderValidator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
 // ============================================================================
+// OPTIMIZER MODULES (disabled by default)
+// ============================================================================
+const OptimizerConfig = require('./src/optimizer/OptimizerConfig');
+const LiveOptimizerController = require('./src/optimizer/LiveOptimizerController');
+const TelemetryFeed = require('./src/optimizer/TelemetryFeed');
+
+// ============================================================================
 // CONFIGURATION
 // ============================================================================
 const CONFIG = {
@@ -120,7 +127,12 @@ const CONFIG = {
   
   // Data file for position persistence
   POSITIONS_FILE: './positions.json',
-  RETRY_QUEUE_FILE: './retry_queue.json'
+  RETRY_QUEUE_FILE: './retry_queue.json',
+  
+  // Optimizer settings (disabled by default)
+  OPTIMIZER: {
+    ENABLED: process.env.OPTIMIZER_ENABLED === 'true' || false
+  }
 };
 
 // ============================================================================
@@ -151,6 +163,15 @@ app.use((req, res, next) => {
 // Favicon handler
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
+});
+
+// .well-known handler for DevTools and other well-known paths
+app.get('/.well-known/*', (req, res) => {
+  res.status(404).json({ 
+    error: 'Not Found',
+    path: req.path,
+    message: 'The requested .well-known resource does not exist'
+  });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -198,6 +219,11 @@ const positionMonitor = new EventEmitter();
 
 let currentTimeframe = '5min';
 let accountBalance = 0;
+
+// ============================================================================
+// OPTIMIZER CONTROLLER (initialized later after other components)
+// ============================================================================
+let optimizerController = null;
 
 // ============================================================================
 // V3.5.2: PRECISION-SAFE MATH UTILITIES USING DECIMAL.JS
@@ -2438,6 +2464,110 @@ app.post('/api/calculate', (req, res) => {
 });
 
 // ============================================================================
+// OPTIMIZER API ENDPOINTS
+// ============================================================================
+app.get('/api/optimizer/status', (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED) {
+      return res.json({ 
+        enabled: false, 
+        message: 'Optimizer is disabled. Set OPTIMIZER_ENABLED=true to enable.' 
+      });
+    }
+    
+    if (!optimizerController) {
+      return res.json({ 
+        enabled: true, 
+        running: false, 
+        message: 'Optimizer is not initialized' 
+      });
+    }
+    
+    const status = optimizerController.getStatus();
+    res.json({ 
+      enabled: true, 
+      ...status 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/optimizer/results', (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED || !optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not enabled or initialized' });
+    }
+    
+    const results = optimizerController.getResults();
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/start', async (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED) {
+      return res.status(400).json({ error: 'Optimizer is disabled' });
+    }
+    
+    if (!optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not initialized' });
+    }
+    
+    const options = req.body || {};
+    const result = await optimizerController.start(options);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/stop', async (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED || !optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not enabled or initialized' });
+    }
+    
+    const result = await optimizerController.stop();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/promote', async (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED || !optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not enabled or initialized' });
+    }
+    
+    const { variantId } = req.body;
+    
+    if (!variantId) {
+      return res.status(400).json({ error: 'variantId is required' });
+    }
+    
+    const result = await optimizerController.promoteVariant(variantId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// 404 ERROR HANDLER
+// ============================================================================
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    path: req.path,
+    message: 'The requested endpoint does not exist'
+  });
+});
+
+// ============================================================================
 // PERIODIC UPDATES
 // ============================================================================
 function sleep(ms) {
@@ -2572,6 +2702,19 @@ async function startup() {
   // Initialize market data
   await initializeAllSymbols();
 
+  // Initialize optimizer if enabled
+  if (CONFIG.OPTIMIZER.ENABLED) {
+    console.log('[INIT] Initializing Live Optimizer...');
+    try {
+      optimizerController = new LiveOptimizerController(OptimizerConfig);
+      console.log('[INIT] ✓ Live Optimizer initialized (not running)');
+    } catch (error) {
+      console.error('[INIT] ✗ Failed to initialize optimizer:', error.message);
+    }
+  } else {
+    console.log('[INIT] Live Optimizer is disabled (set OPTIMIZER_ENABLED=true to enable)');
+  }
+
   if (SHOULD_START_INTERVALS) {
     startIntervals();
   }
@@ -2588,11 +2731,18 @@ async function startup() {
 }
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n[SHUTDOWN] Saving positions...');
   savePositions();
   console.log('[SHUTDOWN] Saving retry queue...');
   retryQueueManager.save();
+  
+  // Stop optimizer if running
+  if (optimizerController && optimizerController.running) {
+    console.log('[SHUTDOWN] Stopping optimizer...');
+    await optimizerController.stop();
+  }
+  
   console.log('[SHUTDOWN] Closing connections...');
   stopIntervals();
   wsClients.forEach(ws => ws.close());
