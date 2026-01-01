@@ -984,7 +984,27 @@ class SignalGenerator {
       score,
       confidence,
       breakdown,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      // Signal metadata for optimizer integration
+      experimental: false,           // Set to true for experimental signals
+      strategyVariantId: null,       // Set when from experimental strategy
+      confidenceScore: null          // Numeric confidence for experiments
+    };
+  }
+  
+  /**
+   * Tag signal as experimental
+   * @param {Object} signal - Base signal to tag
+   * @param {string} variantId - Strategy variant ID
+   * @param {number} confidence - Numeric confidence score (0-1)
+   * @returns {Object} Tagged signal
+   */
+  static tagExperimental(signal, variantId, confidence = null) {
+    return {
+      ...signal,
+      experimental: true,
+      strategyVariantId: variantId,
+      confidenceScore: confidence
     };
   }
 }
