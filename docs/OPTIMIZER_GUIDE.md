@@ -542,6 +542,13 @@ ws.on('message', (data) => {
 3. **Sample Size**: Requires sufficient trades for statistical validity
 4. **Computational**: Limited by available CPU/memory resources
 5. **Network**: Dependent on stable market data feed
+6. **Signal Generation**: Current implementation includes placeholder for signal generation - needs integration with variant-specific indicator weights and signal-weights.js profiles for full functionality
+
+> **Note**: The signal generation method (`generateSignal` in LiveOptimizerController) is currently a placeholder returning null. For production use, it needs to be implemented to:
+> - Apply variant-specific weight profiles from signal-weights.js
+> - Use variant-specific indicator thresholds (RSI, MACD, etc.)
+> - Generate signals with experimental metadata tagging
+> - This is intentionally left as integration point for custom strategy logic
 
 ## Future Enhancements
 

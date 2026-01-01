@@ -986,9 +986,9 @@ class SignalGenerator {
       breakdown,
       timestamp: Date.now(),
       // Signal metadata for optimizer integration
-      experimental: false,           // Set to true for experimental signals
-      strategyVariantId: null,       // Set when from experimental strategy
-      confidenceScore: null          // Numeric confidence for experiments
+      experimental: false,           // Set to true for signals from experimental strategies
+      strategyVariantId: null,       // Set to variant ID when from experimental strategy
+      confidenceScore: null          // Numeric confidence score for experimental strategies
     };
   }
   

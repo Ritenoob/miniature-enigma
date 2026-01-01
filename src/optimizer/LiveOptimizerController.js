@@ -27,7 +27,6 @@ class LiveOptimizerController extends EventEmitter {
     
     // Rate limiting
     this.lastApiCall = 0;
-    this.apiCallQueue = [];
     
     // Safety tracking
     this.globalDrawdown = 0;
@@ -206,14 +205,23 @@ class LiveOptimizerController extends EventEmitter {
   
   /**
    * Generate trading signal for a variant
+   * NOTE: This is a placeholder for signal generation integration.
+   * In production, this should call TechnicalIndicators with variant-specific
+   * weights and configuration from signal-weights.js.
+   * 
    * @param {Object} variant - Strategy variant
    * @param {Object} tick - Price tick data
    * @returns {Object|null} Trading signal or null
    */
   async generateSignal(variant, tick) {
-    // This would use the variant's configuration to generate signals
+    // TODO: Implement variant-specific signal generation
+    // This would use the variant's configuration to generate signals:
+    // 1. Apply variant weight profile from signal-weights.js
+    // 2. Use variant-specific RSI/MACD/etc thresholds
+    // 3. Calculate signal score with variant parameters
+    // 4. Return signal with experimental metadata
+    
     // For now, return null (no signal)
-    // In production, this would call TechnicalIndicators with variant-specific weights
     return null;
   }
   
