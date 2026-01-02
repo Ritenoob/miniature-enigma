@@ -164,7 +164,7 @@ leveragedPnlPercent = (unrealizedPnl / marginUsed) × 100
 
 **Key Insight:** A 0.2% price move at 10x leverage = 2% ROI on margin.
 
-### ROI-Based Stop-Loss & Take-Profit (V3.4.1+)
+### ROI-Based Stop-Loss & Take-Profit (V3.5.0+)
 
 The stop-loss and take-profit are defined by target ROI percentages, not raw price percentages:
 
