@@ -150,10 +150,20 @@ function getActiveWeights() {
  */
 function setActiveProfile(profileName) {
   const config = module.exports;
-  const available = ['default', ...(config.profiles ? Object.keys(config.profiles) : [])];
   
-  if (profileName !== 'default' && (!config.profiles || !config.profiles[profileName])) {
-    throw new Error(`Invalid profile '${profileName}'. Available profiles: ${available.join(', ')}`);
+  // 'default' is always valid
+  if (profileName === 'default') {
+    config.activeProfile = profileName;
+    return;
+  }
+  
+  // For non-default profiles, check if it exists in config.profiles
+  if (!config.profiles || !config.profiles[profileName]) {
+    const availableProfiles = config.profiles ? Object.keys(config.profiles) : [];
+    const profileList = availableProfiles.length > 0 
+      ? `'default', ${availableProfiles.map(p => `'${p}'`).join(', ')}`
+      : "'default' only";
+    throw new Error(`Invalid profile '${profileName}'. Available profiles: ${profileList}`);
   }
   
   config.activeProfile = profileName;
