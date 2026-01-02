@@ -42,6 +42,7 @@ const DecimalMath = require('./src/lib/DecimalMath');
 const { validateConfig } = require('./src/lib/ConfigSchema');
 const SecureLogger = require('./src/lib/SecureLogger');
 const OrderValidator = require('./src/lib/OrderValidator');
+const SignalGenerator = require('./src/lib/SignalGenerator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
 // ============================================================================
@@ -856,112 +857,9 @@ class TechnicalIndicators {
 // ============================================================================
 // SIGNAL GENERATOR (-100 to +100)
 // ============================================================================
-class SignalGenerator {
-  static generate(indicators) {
-    let score = 0;
-    const breakdown = [];
-
-    // RSI (±25 points)
-    if (indicators.rsi < 30) {
-      score += 25;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: 25, reason: 'Oversold (<30)', type: 'bullish' });
-    } else if (indicators.rsi < 40) {
-      score += 15;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: 15, reason: 'Approaching oversold', type: 'bullish' });
-    } else if (indicators.rsi > 70) {
-      score -= 25;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: -25, reason: 'Overbought (>70)', type: 'bearish' });
-    } else if (indicators.rsi > 60) {
-      score -= 15;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: -15, reason: 'Approaching overbought', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: 0, reason: 'Neutral (40-60)', type: 'neutral' });
-    }
-
-    // Williams %R (±20 points)
-    if (indicators.williamsR < -80) {
-      score += 20;
-      breakdown.push({ indicator: 'Williams %R', value: indicators.williamsR.toFixed(1), contribution: 20, reason: 'Oversold (<-80)', type: 'bullish' });
-    } else if (indicators.williamsR > -20) {
-      score -= 20;
-      breakdown.push({ indicator: 'Williams %R', value: indicators.williamsR.toFixed(1), contribution: -20, reason: 'Overbought (>-20)', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'Williams %R', value: indicators.williamsR.toFixed(1), contribution: 0, reason: 'Neutral', type: 'neutral' });
-    }
-
-    // MACD (±20 points)
-    if (indicators.macd > 0 && indicators.macdHistogram > 0) {
-      score += 20;
-      breakdown.push({ indicator: 'MACD', value: indicators.macd.toFixed(2), contribution: 20, reason: 'Bullish momentum', type: 'bullish' });
-    } else if (indicators.macd < 0 && indicators.macdHistogram < 0) {
-      score -= 20;
-      breakdown.push({ indicator: 'MACD', value: indicators.macd.toFixed(2), contribution: -20, reason: 'Bearish momentum', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'MACD', value: indicators.macd.toFixed(2), contribution: 0, reason: 'Neutral/Crossover', type: 'neutral' });
-    }
-
-    // Awesome Oscillator (±15 points)
-    if (indicators.ao > 0) {
-      score += 15;
-      breakdown.push({ indicator: 'AO', value: indicators.ao.toFixed(2), contribution: 15, reason: 'Positive momentum', type: 'bullish' });
-    } else {
-      score -= 15;
-      breakdown.push({ indicator: 'AO', value: indicators.ao.toFixed(2), contribution: -15, reason: 'Negative momentum', type: 'bearish' });
-    }
-
-    // EMA Trend (±20 points)
-    if (indicators.ema50 > indicators.ema200) {
-      score += 20;
-      breakdown.push({ indicator: 'EMA Trend', value: 'EMA50 > EMA200', contribution: 20, reason: 'Bullish trend (Golden Cross)', type: 'bullish' });
-    } else if (indicators.ema50 < indicators.ema200) {
-      score -= 20;
-      breakdown.push({ indicator: 'EMA Trend', value: 'EMA50 < EMA200', contribution: -20, reason: 'Bearish trend (Death Cross)', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'EMA Trend', value: 'EMA50 ≈ EMA200', contribution: 0, reason: 'Neutral', type: 'neutral' });
-    }
-
-    // Stochastic (±10 points)
-    if (indicators.stochK < 20 && indicators.stochK > indicators.stochD) {
-      score += 10;
-      breakdown.push({ indicator: 'Stochastic', value: indicators.stochK.toFixed(1), contribution: 10, reason: 'Oversold + bullish crossover', type: 'bullish' });
-    } else if (indicators.stochK > 80 && indicators.stochK < indicators.stochD) {
-      score -= 10;
-      breakdown.push({ indicator: 'Stochastic', value: indicators.stochK.toFixed(1), contribution: -10, reason: 'Overbought + bearish crossover', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'Stochastic', value: indicators.stochK.toFixed(1), contribution: 0, reason: 'Neutral', type: 'neutral' });
-    }
-
-    // Bollinger Bands (±10 points)
-    if (indicators.price < indicators.bollingerLower) {
-      score += 10;
-      breakdown.push({ indicator: 'Bollinger', value: 'Below lower', contribution: 10, reason: 'Price below lower band', type: 'bullish' });
-    } else if (indicators.price > indicators.bollingerUpper) {
-      score -= 10;
-      breakdown.push({ indicator: 'Bollinger', value: 'Above upper', contribution: -10, reason: 'Price above upper band', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'Bollinger', value: 'Within bands', contribution: 0, reason: 'Price within bands', type: 'neutral' });
-    }
-
-    // Determine signal type
-    let type = 'NEUTRAL';
-    let confidence = 'LOW';
-    
-    if (score >= 70) { type = 'STRONG_BUY'; confidence = 'HIGH'; }
-    else if (score >= 50) { type = 'BUY'; confidence = 'MEDIUM'; }
-    else if (score >= 30) { type = 'BUY'; confidence = 'LOW'; }
-    else if (score <= -70) { type = 'STRONG_SELL'; confidence = 'HIGH'; }
-    else if (score <= -50) { type = 'SELL'; confidence = 'MEDIUM'; }
-    else if (score <= -30) { type = 'SELL'; confidence = 'LOW'; }
-
-    return {
-      type,
-      score,
-      confidence,
-      breakdown,
-      timestamp: Date.now()
-    };
-  }
-}
+// SignalGenerator is now imported from src/lib/SignalGenerator.js
+// Initialize with config from signal-weights.js
+SignalGenerator.initialize();
 
 // ============================================================================
 // MARKET DATA MANAGER
@@ -1729,6 +1627,7 @@ function broadcastInitialState(ws) {
       trading: CONFIG.TRADING,
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
+      signalProfile: SignalGenerator.getActiveProfile(),
       version: '3.5.2'
     }
   }));
@@ -2212,6 +2111,22 @@ wss.on('connection', async (ws) => {
             broadcastLog('info', `Config updated: ${JSON.stringify(data.config)}`);
           }
           break;
+
+        case 'set_signal_profile':
+          if (data.profile) {
+            try {
+              SignalGenerator.setProfile(data.profile);
+              broadcastLog('info', `Signal profile changed to: ${data.profile}`);
+              broadcast({ 
+                type: 'signal_profile_changed', 
+                profile: data.profile,
+                config: SignalGenerator.getActiveProfile()
+              });
+            } catch (error) {
+              broadcastLog('error', `Failed to change profile: ${error.message}`);
+            }
+          }
+          break;
       }
 
     } catch (error) {
@@ -2310,6 +2225,31 @@ app.post('/api/config', (req, res) => {
     res.json({ success: true, config: CONFIG.TRADING });
   } else {
     res.status(400).json({ error: 'No config provided' });
+  }
+});
+
+// Signal configuration endpoints
+app.get('/api/signal/config', (req, res) => {
+  res.json({
+    activeProfile: SignalGenerator.getActiveProfile(),
+    availableProfiles: SignalGenerator.getAvailableProfiles(),
+    thresholds: require('./signal-weights').thresholds
+  });
+});
+
+app.post('/api/signal/config', (req, res) => {
+  const { profile } = req.body;
+  
+  if (!profile) {
+    return res.status(400).json({ error: 'Profile name required' });
+  }
+  
+  try {
+    SignalGenerator.setProfile(profile);
+    broadcastLog('info', `Signal profile switched to: ${profile}`);
+    res.json({ success: true, profile: SignalGenerator.getActiveProfile() });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
