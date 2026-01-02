@@ -238,7 +238,7 @@ class ADXIndicator {
    * @private
    */
   _getSignal() {
-    if (!this.getCurrentValues().ready) {
+    if (this.adxBuffer.length === 0) {
       return 'neutral';
     }
     

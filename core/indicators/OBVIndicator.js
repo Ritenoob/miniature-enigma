@@ -151,7 +151,7 @@ class OBVIndicator {
    * @private
    */
   _getSignal(slope) {
-    if (!this.getCurrentValues().ready) {
+    if (this.closeBuffer.length < Math.max(this.smoothingPeriod, this.slopePeriod)) {
       return 'neutral';
     }
     

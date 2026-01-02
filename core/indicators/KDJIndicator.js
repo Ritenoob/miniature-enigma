@@ -168,7 +168,7 @@ class KDJIndicator {
    * @private
    */
   _getSignal() {
-    if (!this.getCurrentValues().ready) {
+    if (this.closeBuffer.length < this.period) {
       return 'neutral';
     }
     
