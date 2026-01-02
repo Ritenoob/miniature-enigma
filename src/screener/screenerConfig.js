@@ -1,0 +1,174 @@
+/**
+ * Screener Configuration
+ * ----------------------
+ * Centralized, declarative configuration for the dual-timeframe screener.
+ *
+ * Design goals:
+ * - Zero code changes required to adjust symbols, timeframes, indicators
+ * - Explicit alignment rules (institutional-style confirmation logic)
+ * - KuCoin Futures–correct symbol & timeframe formats
+ * - Safe defaults for real-time operation
+ *
+ * NOTES:
+ * - KuCoin Futures perpetual symbols typically end with "USDTM"
+ *   Examples: BTCUSDTM, ETHUSDTM, SOLUSDTM
+ * - KuCoin candle intervals for WS topics use formats like:
+ *   1min, 5min, 15min, 1hour, 4hour, 1day
+ */
+
+module.exports = {
+  /* ============================================================
+   * SYMBOL UNIVERSE
+   * ============================================================
+   * Perpetual futures contracts to scan.
+   * Keep this list tight to avoid unnecessary WS subscriptions.
+   */
+  symbols: [
+    'BTCUSDTM',
+    'ETHUSDTM',
+    'SOLUSDTM',
+    'BNBUSDTM',
+    'XRPUSDTM',
+    'ADAUSDTM',
+    'AVAXUSDTM',
+    'DOGEUSDTM'
+  ],
+
+  /* ============================================================
+   * TIMEFRAME CONFIGURATION
+   * ============================================================
+   * Two timeframes used for alignment.
+   * Primary = lower / trigger frame
+   * Secondary = higher / confirmation frame
+   */
+  primaryTimeframe: '5min',
+  secondaryTimeframe: '15min',
+
+  /**
+   * Optional advanced mode (disabled by default):
+   * Allows multiple timeframe pairs.
+   *
+   * Example:
+   * timeframePairs: [
+   *   ['5min', '15min'],
+   *   ['15min', '1hour']
+   * ]
+   */
+  // timeframePairs: null,
+
+  /* ============================================================
+   * INDICATORS USED FOR ALIGNMENT
+   * ============================================================
+   * Only indicators listed here participate in alignment logic.
+   * Indicator engines may still compute others for strategy use.
+   */
+  indicators: [
+    'rsi',
+    'macd',
+    'williamsR',
+    'ao'
+  ],
+
+  /* ============================================================
+   * INDICATOR PARAMETERS & THRESHOLDS
+   * ============================================================
+   * These values are consumed by:
+   * - indicator engines (periods)
+   * - timeframeAligner (threshold logic)
+   */
+  indicatorParams: {
+    rsi: {
+      period: 14,
+      oversold: 30,     // bullish below this
+      overbought: 70    // bearish above this
+    },
+
+    macd: {
+      fastPeriod: 12,
+      slowPeriod: 26,
+      signalPeriod: 9
+      // Alignment uses histogram sign (>0 bullish, <0 bearish)
+    },
+
+    williamsR: {
+      period: 14,
+      oversold: -80,    // bullish below this
+      overbought: -20   // bearish above this
+    },
+
+    ao: {
+      fast: 5,
+      slow: 34
+      // Alignment uses AO sign (>0 bullish, <0 bearish)
+    }
+  },
+
+  /* ============================================================
+   * ALIGNMENT CRITERIA
+   * ============================================================
+   * Defines when a signal is considered valid.
+   *
+   * Philosophy:
+   * - Avoid requiring all indicators (too strict, low frequency)
+   * - Require confirmation from multiple, independent signals
+   */
+  alignmentCriteria: {
+    requireAll: false,      // if true → all indicators must align
+    minAligned: 2,          // minimum indicators aligned in same direction
+
+    /**
+     * Optional signal strength grading:
+     * If enabled, screener can label signals as "strong"
+     * when all indicators align.
+     */
+    strongSignalWhenAllAlign: true
+  },
+
+  /* ============================================================
+   * OUTPUT / EMISSION SETTINGS
+   * ============================================================
+   * Controls where screener results are sent.
+   */
+  outputs: {
+    logToFile: true,
+    logFilePath: 'screener_matches.jsonl', // JSON Lines format
+    console: true,                         // human-readable logs
+    emitEvents: true                       // EventEmitter integration
+  },
+
+  /* ============================================================
+   * DATA FEED SETTINGS
+   * ============================================================
+   * Public market data only (no auth required).
+   */
+  dataFeed: {
+    useWebSocket: true,        // strongly recommended
+    useRestFallback: false,    // enable only if WS is unstable
+    restPollInterval: 30000    // ms (only used if REST fallback enabled)
+  },
+
+  /* ============================================================
+   * OPTIONAL LIQUIDITY / VOLATILITY FILTERS
+   * ============================================================
+   * ScreenerEngine may skip symbols that do not meet criteria.
+   * (Disabled by default; enable only if implemented in engine.)
+   */
+  filters: {
+    enabled: false,
+
+    min24hVolumeUSDT: null,    // e.g. 50_000_000
+    minATRPercent: null        // e.g. 0.5 (% of price)
+  },
+
+  /* ============================================================
+   * INTERNAL / ADVANCED
+   * ============================================================
+   * Guardrails & tuning knobs.
+   */
+  internals: {
+    maxCandleBuffer: 1000,     // per symbol per timeframe
+    deduplicateSignals: true,  // avoid spamming same alignment
+    signalCooldownMs: 60_000   // minimum time between same-symbol signals
+  }
+};
+

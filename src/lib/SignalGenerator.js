@@ -22,8 +22,22 @@ class SignalGenerator {
    */
   static initialize(configPath = null) {
     try {
-      // Resolve config path
-      this.configPath = configPath || path.resolve(__dirname, '../../signal-weights.js');
+      // Resolve config path - try new location first, fall back to old location
+      if (!configPath) {
+        const newPath = path.resolve(__dirname, '../../src/config/signal-weights.js');
+        const oldPath = path.resolve(__dirname, '../../signal-weights.js');
+        
+        // Try new location first
+        try {
+          require.resolve(newPath);
+          this.configPath = newPath;
+        } catch (e) {
+          // Fall back to old location for backward compatibility
+          this.configPath = oldPath;
+        }
+      } else {
+        this.configPath = configPath;
+      }
       
       // Load config file
       delete require.cache[require.resolve(this.configPath)];

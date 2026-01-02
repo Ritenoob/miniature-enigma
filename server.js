@@ -45,6 +45,16 @@ const OrderValidator = require('./src/lib/OrderValidator');
 const SignalGenerator = require('./src/lib/SignalGenerator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
+// Helper to load signal-weights from either old or new location
+function loadSignalWeights() {
+  try {
+    return require('./src/config/signal-weights');
+  } catch (e) {
+    // Fall back to old location for backward compatibility
+    return require('./signal-weights');
+  }
+}
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -2233,7 +2243,7 @@ app.get('/api/signal/config', (req, res) => {
   res.json({
     activeProfile: SignalGenerator.getActiveProfile(),
     availableProfiles: SignalGenerator.getAvailableProfiles(),
-    thresholds: require('./signal-weights').thresholds
+    thresholds: loadSignalWeights().thresholds
   });
 });
 
