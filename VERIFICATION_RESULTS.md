@@ -162,8 +162,8 @@ grep -i "pyc\|__pycache__" .gitignore
 # Should output: (empty)
 
 # Verify CHANGELOG
-grep "2 of 8 PRs" CHANGELOG.md
-# Should output: ### Status: Phase 1 Complete (2 of 8 PRs Integrated)
+grep "2 of 8" CHANGELOG.md
+# Should output a line containing: "2 of 8 PRs"
 
 # Verify PR #1 and PR #9 files still exist
 ls .github/copilot-instructions.md .github/CONTRIBUTING.md

@@ -92,9 +92,12 @@ git push origin copilot/release-v361
 ### Option 2: Recreate Changes Manually
 If my local commits cannot be accessed, someone needs to manually:
 
-1. Checkout `copilot/release-v361`:
+1. Fetch and checkout `copilot/release-v361`:
    ```bash
+   git fetch origin
    git checkout copilot/release-v361
+   # OR if branch doesn't exist locally:
+   git checkout -b copilot/release-v361 origin/copilot/release-v361
    ```
 
 2. Remove Python files:

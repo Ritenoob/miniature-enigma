@@ -88,7 +88,9 @@ git checkout copilot/release-v361
 
 # Verify the commits are there
 git log --oneline -3
-# Should show ff43835 and 1c34d96
+# Should show ff43835 and 1c34d96, OR check by message:
+git log --oneline --grep="Remove Python MACD strategy"
+# Should show the removal commit
 
 # Push to GitHub
 git push origin copilot/release-v361
