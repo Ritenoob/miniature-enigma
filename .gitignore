@@ -1,8 +1,25 @@
 node_modules/
 .env
+.env.*
+!.env.example
 .retry_queue.json
 positions.json
 retry_queue.json
 npm-debug.log*
 .DS_Store
 coverage/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+*.log
+*.sqlite
+*.db
+

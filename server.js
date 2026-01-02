@@ -43,6 +43,7 @@ const { validateConfig } = require('./src/lib/ConfigSchema');
 const SecureLogger = require('./src/lib/SecureLogger');
 const OrderValidator = require('./src/lib/OrderValidator');
 const SignalGenerator = require('./src/lib/SignalGenerator');
+const LiveOptimizerController = require('./src/optimizer/LiveOptimizerController');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
 // ============================================================================
@@ -171,6 +172,11 @@ const KUCOIN_API_KEY = process.env.KUCOIN_API_KEY;
 const KUCOIN_API_SECRET = process.env.KUCOIN_API_SECRET;
 const KUCOIN_API_PASSPHRASE = process.env.KUCOIN_API_PASSPHRASE;
 
+// Optimizer configuration
+const OPTIMIZER_ENABLED = process.env.OPTIMIZER_ENABLED === 'true';
+const OPTIMIZER_MAX_VARIANTS = parseInt(process.env.OPTIMIZER_MAX_VARIANTS || '4', 10);
+const OPTIMIZER_AUTO_PROMOTE = process.env.OPTIMIZER_AUTO_PROMOTE === 'true';
+
 if ((!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) && !DEMO_MODE) {
   console.error('╔═══════════════════════════════════════════════════════════════╗');
   console.error('║  ERROR: Missing KuCoin API credentials                        ║');
@@ -184,6 +190,10 @@ if ((!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) && !DEMO_M
 
 if (DEMO_MODE) {
   console.warn('[INIT] Demo mode enabled. Using mock KuCoin client and synthetic market data. No live orders will be sent.');
+}
+
+if (OPTIMIZER_ENABLED) {
+  console.log('[INIT] Live Optimizer enabled. Will run experimental strategy variants in paper trading mode.');
 }
 
 // ============================================================================
@@ -708,6 +718,28 @@ class RetryQueueManager {
 }
 
 const retryQueueManager = new RetryQueueManager();
+
+// ============================================================================
+// LIVE OPTIMIZER INSTANCE
+// ============================================================================
+let liveOptimizer = null;
+
+if (OPTIMIZER_ENABLED) {
+  // Initialize optimizer with paper trading mode
+  // Force paper trading in DEMO_MODE, otherwise use config
+  const optimizerConfig = {
+    paperTrading: DEMO_MODE || true,  // Always paper trade unless explicitly configured
+    realTradingEnabled: false,         // Never enable real trading by default
+    maxConcurrentVariants: OPTIMIZER_MAX_VARIANTS,
+    profiles: ['default', 'conservative', 'aggressive', 'balanced'],
+    fillModel: 'taker',
+    positionSize: { min: 0.5, max: 2.0, default: 1.0 },
+    leverage: { min: 5, max: 20, default: 10 }
+  };
+  
+  liveOptimizer = new LiveOptimizerController(optimizerConfig);
+  console.log('[OPTIMIZER] Initialized with paper trading mode');
+}
 
 // ============================================================================
 // TECHNICAL INDICATORS
@@ -1559,6 +1591,16 @@ function broadcastMarketData(symbol) {
   // V3.5: Include recommended leverage
   const recommendedLeverage = manager.getRecommendedLeverage(1.0);
   
+  // Feed data to live optimizer if enabled
+  if (OPTIMIZER_ENABLED && liveOptimizer) {
+    try {
+      liveOptimizer.onMarketUpdate(symbol, indicators, manager.currentPrice);
+    } catch (error) {
+      // Don't let optimizer errors crash the main system
+      console.error('[OPTIMIZER ERROR]', error.message);
+    }
+  }
+  
   broadcast({
     type: 'market_update',
     symbol,
@@ -1628,7 +1670,8 @@ function broadcastInitialState(ws) {
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
       signalProfile: SignalGenerator.getActiveProfile(),
-      version: '3.5.2'
+      version: '3.5.2',
+      optimizerEnabled: OPTIMIZER_ENABLED
     }
   }));
 }
@@ -2127,6 +2170,42 @@ wss.on('connection', async (ws) => {
             }
           }
           break;
+
+        case 'get_optimizer_status':
+          if (OPTIMIZER_ENABLED && liveOptimizer) {
+            try {
+              const status = liveOptimizer.getStatus();
+              ws.send(JSON.stringify({ type: 'optimizer_status', data: status }));
+            } catch (error) {
+              broadcastLog('error', `Failed to get optimizer status: ${error.message}`);
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'optimizer_status', data: { enabled: false } }));
+          }
+          break;
+
+        case 'get_optimizer_performance':
+          if (OPTIMIZER_ENABLED && liveOptimizer) {
+            try {
+              const comparison = liveOptimizer.getPerformanceComparison();
+              ws.send(JSON.stringify({ type: 'optimizer_performance', data: comparison }));
+            } catch (error) {
+              broadcastLog('error', `Failed to get optimizer performance: ${error.message}`);
+            }
+          }
+          break;
+
+        case 'reset_optimizer':
+          if (OPTIMIZER_ENABLED && liveOptimizer) {
+            try {
+              liveOptimizer.reset();
+              broadcastLog('info', '[OPTIMIZER] Reset all variants');
+              ws.send(JSON.stringify({ type: 'optimizer_reset', success: true }));
+            } catch (error) {
+              broadcastLog('error', `Failed to reset optimizer: ${error.message}`);
+            }
+          }
+          break;
       }
 
     } catch (error) {
@@ -2156,7 +2235,9 @@ app.get('/health', (req, res) => {
     symbols: Object.keys(marketManagers).length,
     positions: activePositions.size,
     clients: wsClients.size,
-    retryQueueLength: retryQueueManager.queue.length
+    retryQueueLength: retryQueueManager.queue.length,
+    optimizerEnabled: OPTIMIZER_ENABLED,
+    optimizerStatus: OPTIMIZER_ENABLED && liveOptimizer ? liveOptimizer.getStatus().initialized : false
   });
 });
 
@@ -2378,6 +2459,49 @@ app.post('/api/calculate', (req, res) => {
 });
 
 // ============================================================================
+// OPTIMIZER API ENDPOINTS
+// ============================================================================
+app.get('/api/optimizer/status', (req, res) => {
+  if (!OPTIMIZER_ENABLED || !liveOptimizer) {
+    return res.json({ enabled: false, message: 'Optimizer not enabled' });
+  }
+  
+  try {
+    const status = liveOptimizer.getStatus();
+    res.json({ enabled: true, ...status });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/optimizer/performance', (req, res) => {
+  if (!OPTIMIZER_ENABLED || !liveOptimizer) {
+    return res.json({ enabled: false, message: 'Optimizer not enabled' });
+  }
+  
+  try {
+    const comparison = liveOptimizer.getPerformanceComparison();
+    res.json({ enabled: true, variants: comparison });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/reset', (req, res) => {
+  if (!OPTIMIZER_ENABLED || !liveOptimizer) {
+    return res.status(400).json({ error: 'Optimizer not enabled' });
+  }
+  
+  try {
+    liveOptimizer.reset();
+    broadcastLog('info', '[OPTIMIZER] Reset all variants');
+    res.json({ success: true, message: 'Optimizer reset' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
 // PERIODIC UPDATES
 // ============================================================================
 function sleep(ms) {
@@ -2435,6 +2559,18 @@ function startIntervals() {
   intervalRefs.push(setInterval(() => {
     retryQueueManager.process();
   }, 10000));
+
+  // Broadcast optimizer status every 30 seconds if enabled
+  if (OPTIMIZER_ENABLED && liveOptimizer) {
+    intervalRefs.push(setInterval(() => {
+      try {
+        const status = liveOptimizer.getStatus();
+        broadcast({ type: 'optimizer_status', data: status });
+      } catch (error) {
+        // Silent fail - don't spam logs
+      }
+    }, 30000));
+  }
 
   // Sync positions from KuCoin every minute
   intervalRefs.push(setInterval(async () => {
@@ -2521,6 +2657,9 @@ async function startup() {
     console.log('');
     console.log('╔═══════════════════════════════════════════════════════════════╗');
     console.log(`║     Dashboard: http://localhost:${CONFIG.PORT}                        ║`);
+    if (OPTIMIZER_ENABLED) {
+      console.log('║     Live Optimizer: ENABLED (Paper Trading)                   ║');
+    }
     console.log('╚═══════════════════════════════════════════════════════════════╝');
     console.log('');
     console.log('[READY] Waiting for dashboard connection...');
@@ -2535,6 +2674,14 @@ process.on('SIGINT', () => {
   retryQueueManager.save();
   console.log('[SHUTDOWN] Closing connections...');
   stopIntervals();
+  
+  // Stop optimizer if running
+  if (OPTIMIZER_ENABLED && liveOptimizer) {
+    console.log('[SHUTDOWN] Stopping optimizer...');
+    // Optimizer cleanup (positions already tracked in variants)
+    liveOptimizer = null;
+  }
+  
   wsClients.forEach(ws => ws.close());
   server.close();
   console.log('[SHUTDOWN] Goodbye!');
