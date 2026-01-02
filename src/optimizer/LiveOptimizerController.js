@@ -19,6 +19,9 @@ const TrailingStopPolicy = require('./TrailingStopPolicy');
 const EventEmitter = require('events');
 const signalWeights = require('../../signal-weights');
 
+// Constants
+const TRADING_DAYS_PER_YEAR = 250;  // Annualization factor for Sharpe ratio
+
 /**
  * Optimizer configuration schema
  * @typedef {Object} OptimizerConfig
@@ -181,13 +184,13 @@ class TradingVariant {
       ? this.tradeHistory.reduce((sum, t) => sum + t.realizedROI, 0) / this.metrics.tradesCount
       : 0;
     
-    // Calculate Sharpe ratio (annualized, assuming daily trades)
+    // Calculate Sharpe ratio (annualized, assuming ~250 trading days, risk-free rate ~0)
     if (this.metrics.returns.length >= 2) {
       const mean = this.metrics.returns.reduce((a, b) => a + b, 0) / this.metrics.returns.length;
       const variance = this.metrics.returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / this.metrics.returns.length;
       const stdDev = Math.sqrt(variance);
-      // Annualize assuming ~250 trading days, risk-free rate ~0
-      this.metrics.sharpeRatio = stdDev > 0 ? (mean * Math.sqrt(250)) / stdDev : 0;
+      // Annualize using TRADING_DAYS_PER_YEAR constant
+      this.metrics.sharpeRatio = stdDev > 0 ? (mean * Math.sqrt(TRADING_DAYS_PER_YEAR)) / stdDev : 0;
     }
     
     // Update drawdown tracking
@@ -322,7 +325,8 @@ class LiveOptimizerController extends EventEmitter {
    * @private
    */
   _validateAndMergeConfig(userConfig) {
-    const merged = JSON.parse(JSON.stringify(OptimizerConfig));  // Deep clone defaults
+    // Deep clone defaults using structured cloning
+    const merged = structuredClone(OptimizerConfig);
     
     // Merge user config (shallow merge for top-level keys)
     Object.keys(userConfig).forEach(key => {
@@ -515,7 +519,7 @@ class LiveOptimizerController extends EventEmitter {
         // Threshold variations (only for third profile)
         if (profile === profiles[2] && profiles.length > 2 && thresholds) {
           thresholds.forEach((thresh, idx) => {
-            if (idx > 0) {  // Skip default (index 1)
+            if (idx !== 1) {  // Skip default (index 1 is the default in array)
               variants.push({
                 variantId: `${profile}_thresh${idx}`,
                 profileName: profile,
@@ -608,28 +612,41 @@ class LiveOptimizerController extends EventEmitter {
       // Check stop loss / take profit
       this.checkExitConditions(variant, currentPrice);
     } else if (variant.canOpenPosition()) {
-      // Generate signal for this profile with custom thresholds
+      // Generate signal for this profile
+      // NOTE: SignalGenerator uses global state for profile, which could be a race condition
+      // in truly concurrent scenarios. For now, since this runs synchronously, it's safe.
+      // In future, consider making SignalGenerator instance-based or thread-safe.
       SignalGenerator.setProfile(variant.profileName);
-      
-      // Apply custom thresholds if provided
-      const originalThresholds = signalWeights.thresholds;
-      if (variant.customParams.thresholds) {
-        // Temporarily override thresholds
-        Object.assign(signalWeights.thresholds, variant.customParams.thresholds);
-      }
       
       const signalStartTime = Date.now();
       const signal = SignalGenerator.generate(indicators);
       const signalLatency = Date.now() - signalStartTime;
       
-      // Restore original thresholds
+      // Apply custom thresholds by comparing signal score against variant's thresholds
+      // rather than modifying global state
+      const customThresholds = variant.customParams.thresholds || signalWeights.thresholds;
+      let adjustedSignalType = signal.type;
+      
+      // Re-evaluate signal type based on custom thresholds if they differ from defaults
       if (variant.customParams.thresholds) {
-        Object.assign(signalWeights.thresholds, originalThresholds);
+        const score = signal.score || 0;
+        if (score >= customThresholds.strongBuy) {
+          adjustedSignalType = 'STRONG_BUY';
+        } else if (score >= customThresholds.buy) {
+          adjustedSignalType = 'BUY';
+        } else if (score <= customThresholds.strongSell) {
+          adjustedSignalType = 'STRONG_SELL';
+        } else if (score <= customThresholds.sell) {
+          adjustedSignalType = 'SELL';
+        } else {
+          adjustedSignalType = 'NEUTRAL';
+        }
       }
       
       // Consider entry if strong signal
-      if (signal.type === 'STRONG_BUY' || signal.type === 'STRONG_SELL') {
-        this.considerEntry(variant, signal, currentPrice, symbol, signalLatency);
+      if (adjustedSignalType === 'STRONG_BUY' || adjustedSignalType === 'STRONG_SELL') {
+        const adjustedSignal = { ...signal, type: adjustedSignalType };
+        this.considerEntry(variant, adjustedSignal, currentPrice, symbol, signalLatency);
       }
     }
   }
@@ -1068,8 +1085,14 @@ class LiveOptimizerController extends EventEmitter {
       const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / (n - 1);
       const stdError = Math.sqrt(variance / n);
       // Z-score for 95% confidence (1.96)
-      const zScore = avgReturn / stdError;
-      isSignificant = Math.abs(zScore) >= 1.96;
+      // Check for zero to avoid division by zero
+      if (stdError > 0) {
+        const zScore = avgReturn / stdError;
+        isSignificant = Math.abs(zScore) >= 1.96;
+      } else {
+        // If all returns are identical (stdError = 0), check if mean is non-zero
+        isSignificant = avgReturn !== 0;
+      }
     }
 
     // Decision: promote if all checks pass, score >= 1.0, and statistically significant
