@@ -1,0 +1,19 @@
+Create a LIVE forward-shadow runner that:
+- loads top configs from research/configs/
+- runs N configs simultaneously against live WS + DOM
+- records simulated trades and performance (shadow mode; no live orders)
+- supports A/B comparison and produces live leaderboards
+
+Must record:
+- DOM features (imbalance 5/10/25, spread, microprice)
+- latency metrics (event-loop lag, message jitter, staleness)
+- signal breakdown per config per event
+- hypothetical fills using chosen FILL_MODEL + SLIPPAGE_MODEL
+
+DOM:
+- Only evaluated here (live); tag all DOM-driven decisions and compute DOM contribution delta.
+
+Safety:
+- never live trade by default
+- live trade enabled only by explicit env flag
+
