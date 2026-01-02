@@ -107,7 +107,8 @@ class ScoringEngine {
     if (streakRatio > 0.5) return 20; // High streaks = low consistency
     if (streakRatio < 0.1) return 100; // Low streaks = high consistency
     
-    return 100 - (streakRatio * 160); // Linear interpolation
+    // Linear interpolation, clamped to [0, 100]
+    return Math.max(0, Math.min(100, 100 - (streakRatio * 160)));
   }
   
   /**
@@ -221,6 +222,8 @@ class ScoringEngine {
   
   /**
    * Normal cumulative distribution function (approximation)
+   * Uses Abramowitz and Stegun approximation (1964)
+   * Accurate to 7 decimal places
    */
   normalCDF(x) {
     const t = 1 / (1 + 0.2316419 * Math.abs(x));

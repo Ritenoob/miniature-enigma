@@ -248,21 +248,27 @@ describe('Telemetry Feed', () => {
     assert.strictEqual(telemetryFeed.getAllMetrics().length, 2);
   });
 
-  test('streams updates', (t, done) => {
+  test('streams updates', async (t) => {
     telemetryFeed.clearAll();
     
     let updateCount = 0;
-    const unsubscribe = telemetryFeed.stream((update) => {
-      updateCount++;
-      if (updateCount === 2) {
-        unsubscribe();
-        assert.strictEqual(updateCount, 2);
-        done();
-      }
+    await new Promise((resolve, reject) => {
+      const unsubscribe = telemetryFeed.stream((update) => {
+        try {
+          updateCount++;
+          if (updateCount === 2) {
+            unsubscribe();
+            assert.strictEqual(updateCount, 2);
+            resolve();
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+      
+      telemetryFeed.publish('v1', { roi: 5 });
+      telemetryFeed.publish('v2', { roi: 10 });
     });
-    
-    telemetryFeed.publish('v1', { roi: 5 });
-    telemetryFeed.publish('v2', { roi: 10 });
   });
 });
 

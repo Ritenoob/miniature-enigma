@@ -204,7 +204,11 @@ class LiveOptimizerController extends EventEmitter {
   }
   
   /**
-   * Generate trading signal for a variant
+   * Generate trading signal for a variant (PLACEHOLDER)
+   * 
+   * WARNING: This is a placeholder implementation that returns null.
+   * The optimizer cannot execute actual trades until this is implemented.
+   * 
    * NOTE: This is a placeholder for signal generation integration.
    * In production, this should call TechnicalIndicators with variant-specific
    * weights and configuration from signal-weights.js.
@@ -222,6 +226,8 @@ class LiveOptimizerController extends EventEmitter {
     // 4. Return signal with experimental metadata
     
     // For now, return null (no signal)
+    // NOTE: Until this is implemented, the optimizer will track metrics
+    // but will not execute any trades (paper or live).
     return null;
   }
   
@@ -476,7 +482,11 @@ class LiveOptimizerController extends EventEmitter {
         peak = cumulative;
       }
       
-      const drawdown = ((peak - cumulative) / Math.max(peak, 1)) * 100;
+      // Only calculate drawdown when peak is positive and meaningful
+      let drawdown = 0;
+      if (peak > 0) {
+        drawdown = ((peak - cumulative) / peak) * 100;
+      }
       
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;

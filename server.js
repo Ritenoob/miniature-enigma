@@ -64,7 +64,6 @@ const OrderValidator = require('./src/lib/OrderValidator');
 // ============================================================================
 const OptimizerConfig = require('./src/optimizer/OptimizerConfig');
 const LiveOptimizerController = require('./src/optimizer/LiveOptimizerController');
-const TelemetryFeed = require('./src/optimizer/TelemetryFeed');
 
 // ============================================================================
 // CONFIGURATION
@@ -173,6 +172,8 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   // Content Security Policy - allow inline scripts and styles for dashboard
+  // Note: 'unsafe-inline' is required because the dashboard (index.html) uses inline scripts.
+  // For enhanced security, consider refactoring to use nonces or external script files.
   res.setHeader('Content-Security-Policy', 
     "default-src 'self'; " +
     "script-src 'self' 'unsafe-inline'; " +
@@ -2596,7 +2597,13 @@ app.post('/api/optimizer/promote', async (req, res) => {
     const result = await optimizerController.promoteVariant(variantId);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    // Return a more specific response when the variant does not exist
+    const message = (error && error.message) ? String(error.message) : '';
+    if ((error && error.code === 'VARIANT_NOT_FOUND') || message.toLowerCase().includes('variant not found')) {
+      return res.status(404).json({ error: 'Variant not found' });
+    }
+    
+    res.status(500).json({ error: message || 'Internal server error' });
   }
 });
 
@@ -2791,7 +2798,11 @@ process.on('SIGINT', async () => {
   // Stop optimizer if running
   if (optimizerController && optimizerController.running) {
     console.log('[SHUTDOWN] Stopping optimizer...');
-    await optimizerController.stop();
+    try {
+      await optimizerController.stop();
+    } catch (err) {
+      console.error('[SHUTDOWN] Failed to stop optimizer cleanly:', err);
+    }
   }
   
   console.log('[SHUTDOWN] Closing connections...');

@@ -1,13 +1,12 @@
 /**
  * OPTIMIZER CONFIGURATION
  * Central config manager for the Live Optimizer system
- * Defines parameter constraints, bounds, and environment settings
+ * Defines parameter constraints, bounds, and environment settings.
+ * Note: The actual enable/disable flag for the optimizer is controlled
+ *       via the main server configuration (CONFIG.OPTIMIZER.ENABLED).
  */
 
 module.exports = {
-  // Main toggle for optimizer system
-  enabled: false,  // Disabled by default - opt-in via config
-  
   // Environment-specific settings
   environment: process.env.NODE_ENV || 'development',
   

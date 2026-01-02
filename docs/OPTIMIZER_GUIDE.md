@@ -572,5 +572,5 @@ For issues or questions:
 
 ## License
 
-Part of the KuCoin Perpetual Futures Dashboard v3.5.2
+Part of the KuCoin Perpetual Futures Dashboard v3.6.0
 MIT License
