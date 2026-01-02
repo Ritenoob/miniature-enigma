@@ -48,6 +48,39 @@ module.exports = {
     // Bollinger Bands - Volatility
     bollinger: {
       max: 10
+    },
+
+    // KDJ - Stochastic derivative with J line
+    kdj: {
+      max: 15,
+      oversold: 20,      // Below this = bullish
+      overbought: 80,    // Above this = bearish
+      jOversold: 0,      // J line oversold
+      jOverbought: 100   // J line overbought
+    },
+
+    // OBV - On Balance Volume (with optional smoothing)
+    obv: {
+      max: 10,
+      slopeThreshold: 0, // Slope threshold for trend determination
+      useSmoothing: true,
+      smoothingPeriod: 10
+    },
+
+    // DOM - Depth of Market (order book)
+    dom: {
+      max: 15,
+      imbalanceThreshold: 0.3,  // 30% imbalance threshold
+      spreadThreshold: 0.02,    // 2% spread threshold
+      wallSizeMultiplier: 3.0   // Wall detection multiplier
+    },
+
+    // ADX - Average Directional Index (trend strength)
+    adx: {
+      max: 10,
+      trendThreshold: 25,  // Above this = trending
+      strongTrend: 40,     // Above this = strong trend
+      period: 14
     }
   },
 
@@ -61,7 +94,11 @@ module.exports = {
       ao: { max: 10 },
       emaTrend: { max: 30 },  // Much higher weight on trend
       stochastic: { max: 5, oversold: 20, overbought: 80 },
-      bollinger: { max: 5 }
+      bollinger: { max: 5 },
+      kdj: { max: 8, oversold: 20, overbought: 80, jOversold: 0, jOverbought: 100 },
+      obv: { max: 12, slopeThreshold: 0, useSmoothing: true, smoothingPeriod: 10 },
+      dom: { max: 10, imbalanceThreshold: 0.3, spreadThreshold: 0.02, wallSizeMultiplier: 3.0 },
+      adx: { max: 15, trendThreshold: 25, strongTrend: 40, period: 14 }
     },
 
     // Aggressive - Favor momentum indicators
@@ -72,7 +109,11 @@ module.exports = {
       ao: { max: 20 },
       emaTrend: { max: 10 },  // Lower weight on trend
       stochastic: { max: 15, oversold: 20, overbought: 80 },
-      bollinger: { max: 5 }
+      bollinger: { max: 5 },
+      kdj: { max: 18, oversold: 25, overbought: 75, jOversold: 5, jOverbought: 95 },
+      obv: { max: 8, slopeThreshold: 0, useSmoothing: true, smoothingPeriod: 10 },
+      dom: { max: 12, imbalanceThreshold: 0.25, spreadThreshold: 0.02, wallSizeMultiplier: 3.0 },
+      adx: { max: 7, trendThreshold: 25, strongTrend: 40, period: 14 }
     },
 
     // Balanced - Equal distribution
@@ -83,7 +124,11 @@ module.exports = {
       ao: { max: 15 },
       emaTrend: { max: 15 },
       stochastic: { max: 10, oversold: 20, overbought: 80 },
-      bollinger: { max: 10 }
+      bollinger: { max: 10 },
+      kdj: { max: 12, oversold: 20, overbought: 80, jOversold: 0, jOverbought: 100 },
+      obv: { max: 10, slopeThreshold: 0, useSmoothing: true, smoothingPeriod: 10 },
+      dom: { max: 12, imbalanceThreshold: 0.3, spreadThreshold: 0.02, wallSizeMultiplier: 3.0 },
+      adx: { max: 10, trendThreshold: 25, strongTrend: 40, period: 14 }
     },
 
     // Scalping - Quick signals
@@ -94,7 +139,11 @@ module.exports = {
       ao: { max: 20 },
       emaTrend: { max: 5 },  // Trend less important for scalping
       stochastic: { max: 15, oversold: 25, overbought: 75 },  // Tighter levels
-      bollinger: { max: 5 }
+      bollinger: { max: 5 },
+      kdj: { max: 20, oversold: 30, overbought: 70, jOversold: 10, jOverbought: 90 },
+      obv: { max: 5, slopeThreshold: 0, useSmoothing: true, smoothingPeriod: 5 },
+      dom: { max: 15, imbalanceThreshold: 0.25, spreadThreshold: 0.015, wallSizeMultiplier: 2.5 },
+      adx: { max: 5, trendThreshold: 20, strongTrend: 35, period: 10 }
     },
 
     // Swing Trading - Longer timeframes
@@ -105,7 +154,11 @@ module.exports = {
       ao: { max: 15 },
       emaTrend: { max: 25 },  // Trend very important
       stochastic: { max: 5, oversold: 15, overbought: 85 },  // Wider levels
-      bollinger: { max: 10 }
+      bollinger: { max: 10 },
+      kdj: { max: 10, oversold: 15, overbought: 85, jOversold: 0, jOverbought: 100 },
+      obv: { max: 15, slopeThreshold: 0, useSmoothing: true, smoothingPeriod: 20 },
+      dom: { max: 8, imbalanceThreshold: 0.35, spreadThreshold: 0.025, wallSizeMultiplier: 3.5 },
+      adx: { max: 12, trendThreshold: 25, strongTrend: 40, period: 14 }
     }
   },
 
