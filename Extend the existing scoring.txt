@@ -1,0 +1,38 @@
+Extend the existing scoring system without changing its structure.
+
+Current indicators in SignalGenerator-configurable.js:
+- RSI, Williams %R, MACD, AO, EMA trend, Stochastic, Bollinger
+(signal-weights.js contains configs for those)
+
+You must add:
+1) KDJ (K, D, J)
+2) OBV (with optional EMA smoothing and slope confirmation)
+3) DOM (orderbook imbalance/spread) — LIVE VALIDATION ONLY
+4) (Optional but recommended) ADX + DI+/DI- as regime filter and trend strength score
+
+Required changes:
+- Update signal-weights.js schema:
+  - add kdj, obv, dom, adx sections in weights and in each profile
+  - maintain activeProfile mechanism and thresholds object
+- Update SignalGenerator-configurable.js:
+  - compute contributions and push breakdown entries with:
+    indicator, value, contribution, reason, type
+  - keep output format: { type, score, confidence, breakdown, profile }
+  - confidence must remain derived from |score| mapping
+
+Scoring rules (sane defaults; optimizer will tune them):
+- KDJ:
+  - bullish if J extremely low + turns upward OR K crosses above D in oversold zone
+  - bearish mirrored
+- OBV:
+  - bullish if slope(OBV, window) positive beyond threshold (or zscore) with optional EMA smoothing
+  - bearish mirrored
+- DOM:
+  - compute imbalance at depths 5/10/25 and spread
+  - DOM must be behind DOM_ENABLED flag
+  - any DOM contribution must be tagged in breakdown as “LIVE_ONLY_VALIDATION_REQUIRED”
+  - offline backtests may NOT use DOM; only forward-shadow can evaluate DOM gates
+
+Do not break adjust-weights.js compatibility. If needed, extend it to support new keys safely.
+Deliver unit tests for each new indicator scoring contribution.
+
