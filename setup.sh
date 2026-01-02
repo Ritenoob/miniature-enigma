@@ -1,8 +1,8 @@
 #!/bin/bash
-# KuCoin Futures Dashboard V3.5.0 - Setup Script
+# KuCoin Futures Dashboard V3.5.1 - Setup Script
 
 echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║     KuCoin Futures Dashboard v3.5.0 Setup                     ║"
+echo "║     KuCoin Futures Dashboard v3.5.1 Setup                     ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
 

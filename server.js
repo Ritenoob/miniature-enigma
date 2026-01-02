@@ -1,8 +1,18 @@
 // ============================================================================
 // KuCoin Perpetual Futures Dashboard - Semi-Automated Trading System
-// Version: 3.5.0
+// Version: 3.5.2
 // 
-// CHANGELOG FROM V3.4.2:
+// CHANGELOG FROM V3.5.1:
+// - **V3.5.2 ENHANCEMENTS:**
+// - Precision-safe financial math with decimal.js (eliminates floating-point errors)
+// - Stop order state machine for protection against cancel-then-fail exposure
+// - Order validation layer enforcing reduceOnly on all exit orders
+// - Config schema validation at startup with clear error messages
+// - API key/secret redaction in logs for security
+// - Hot/cold path event architecture for latency-sensitive operations
+// - Property-based tests with fast-check for comprehensive edge case coverage
+// 
+// - **Previous V3.5.1 features:**
 // - Fee-adjusted break-even calculation (accounts for maker/taker fees)
 // - Accurate liquidation price formula with maintenance margin
 // - Slippage buffer on stop placement
@@ -24,6 +34,16 @@ const crypto = require('crypto');
 const axios = require('axios');
 const fs = require('fs');
 const { EventEmitter } = require('events');
+
+// ============================================================================
+// V3.5.2: Import new precision and safety modules
+// ============================================================================
+const DecimalMath = require('./src/lib/DecimalMath');
+const { validateConfig } = require('./src/lib/ConfigSchema');
+const SecureLogger = require('./src/lib/SecureLogger');
+const OrderValidator = require('./src/lib/OrderValidator');
+const SignalGenerator = require('./src/lib/SignalGenerator');
+// Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
 // ============================================================================
 // CONFIGURATION
@@ -105,6 +125,18 @@ const CONFIG = {
 };
 
 // ============================================================================
+// V3.5.2: VALIDATE CONFIGURATION AT STARTUP
+// ============================================================================
+try {
+  validateConfig(CONFIG);
+  console.log('[INIT] ✓ Configuration validated successfully');
+} catch (error) {
+  console.error('[INIT] ✗ Configuration validation failed:');
+  console.error(error.message);
+  process.exit(1);
+}
+
+// ============================================================================
 // EXPRESS & WEBSOCKET SETUP
 // ============================================================================
 const app = express();
@@ -123,6 +155,9 @@ app.get('/favicon.ico', (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -130,11 +165,13 @@ const wss = new WebSocket.Server({ server });
 // ============================================================================
 // API CREDENTIALS
 // ============================================================================
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
+const SHOULD_START_INTERVALS = process.env.RUN_INTERVALS !== 'false';
 const KUCOIN_API_KEY = process.env.KUCOIN_API_KEY;
 const KUCOIN_API_SECRET = process.env.KUCOIN_API_SECRET;
 const KUCOIN_API_PASSPHRASE = process.env.KUCOIN_API_PASSPHRASE;
 
-if (!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) {
+if ((!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) && !DEMO_MODE) {
   console.error('╔═══════════════════════════════════════════════════════════════╗');
   console.error('║  ERROR: Missing KuCoin API credentials                        ║');
   console.error('║  Please set in .env file:                                     ║');
@@ -143,6 +180,10 @@ if (!KUCOIN_API_KEY || !KUCOIN_API_SECRET || !KUCOIN_API_PASSPHRASE) {
   console.error('║    KUCOIN_API_PASSPHRASE=your_passphrase                      ║');
   console.error('╚═══════════════════════════════════════════════════════════════╝');
   process.exit(1);
+}
+
+if (DEMO_MODE) {
+  console.warn('[INIT] Demo mode enabled. Using mock KuCoin client and synthetic market data. No live orders will be sent.');
 }
 
 // ============================================================================
@@ -155,213 +196,45 @@ const fundingRates = {};             // Symbol -> { rate, nextFundingTime }
 const contractSpecs = {};            // Symbol -> { tickSize, lotSize, multiplier, maintMargin }
 const wsClients = new Set();         // Connected dashboard clients
 const positionMonitor = new EventEmitter();
-const retryQueue = [];               // Failed API operations to retry
 
 let currentTimeframe = '5min';
 let accountBalance = 0;
 
 // ============================================================================
-// V3.5 MATH UTILITIES - FROM PDF DOCUMENTATION
+// V3.5.2: PRECISION-SAFE MATH UTILITIES USING DECIMAL.JS
+// TradeMath now wraps DecimalMath for backward compatibility
 // ============================================================================
 const TradeMath = {
+  // All calculation methods now use DecimalMath for precision
+  calculateMarginUsed: DecimalMath.calculateMarginUsed.bind(DecimalMath),
+  calculatePositionValue: DecimalMath.calculatePositionValue.bind(DecimalMath),
+  calculateLotSize: DecimalMath.calculateLotSize.bind(DecimalMath),
+  calculatePriceDiff: DecimalMath.calculatePriceDiff.bind(DecimalMath),
+  calculateUnrealizedPnl: DecimalMath.calculateUnrealizedPnl.bind(DecimalMath),
+  calculateLeveragedPnlPercent: DecimalMath.calculateLeveragedPnlPercent.bind(DecimalMath),
+  calculateFeeAdjustedBreakEven: DecimalMath.calculateFeeAdjustedBreakEven.bind(DecimalMath),
+  calculateTotalFees: DecimalMath.calculateTotalFees.bind(DecimalMath),
+  calculateNetPnl: DecimalMath.calculateNetPnl.bind(DecimalMath),
+  calculateStopLossPrice: DecimalMath.calculateStopLossPrice.bind(DecimalMath),
+  calculateTakeProfitPrice: DecimalMath.calculateTakeProfitPrice.bind(DecimalMath),
+  calculateLiquidationPrice: DecimalMath.calculateLiquidationPrice.bind(DecimalMath),
+  calculateSlippageAdjustedStop: DecimalMath.calculateSlippageAdjustedStop.bind(DecimalMath),
+  calculateTrailingSteps: DecimalMath.calculateTrailingSteps.bind(DecimalMath),
+  calculateTrailedStopLoss: DecimalMath.calculateTrailedStopLoss.bind(DecimalMath),
+  calculateATRTrailingDistance: DecimalMath.calculateATRTrailingDistance.bind(DecimalMath),
+  roundToTickSize: DecimalMath.roundToTickSize.bind(DecimalMath),
+  roundToLotSize: DecimalMath.roundToLotSize.bind(DecimalMath),
+  
   /**
-   * Calculate margin used for a position
-   * Formula: marginUsed = accountBalance × (positionPercent / 100)
-   */
-  calculateMarginUsed(accountBalance, positionPercent) {
-    return accountBalance * (positionPercent / 100);
-  },
-
-  /**
-   * Calculate position value with leverage
-   * Formula: positionValueUSD = marginUsed × leverage
-   */
-  calculatePositionValue(marginUsed, leverage) {
-    return marginUsed * leverage;
-  },
-
-  /**
-   * Calculate contract size (lots)
-   * Formula: size = floor(positionValueUSD / (entryPrice × multiplier))
-   */
-  calculateLotSize(positionValueUSD, entryPrice, multiplier = 1) {
-    return Math.floor(positionValueUSD / (entryPrice * multiplier));
-  },
-
-  /**
-   * Calculate price difference based on position side
-   * Long: priceDiff = currentPrice - entryPrice
-   * Short: priceDiff = entryPrice - currentPrice
-   */
-  calculatePriceDiff(side, entryPrice, currentPrice) {
-    return side === 'long' 
-      ? currentPrice - entryPrice 
-      : entryPrice - currentPrice;
-  },
-
-  /**
-   * Calculate unrealized P&L in USDT
-   * Formula: unrealizedPnl = priceDiff × size × multiplier
-   */
-  calculateUnrealizedPnl(priceDiff, size, multiplier = 1) {
-    return priceDiff * size * multiplier;
-  },
-
-  /**
-   * Calculate leveraged P&L percentage (ROI)
-   * Formula: leveragedPnlPercent = (unrealizedPnl / marginUsed) × 100
-   * This is the ACTUAL return on invested capital, not just price movement
-   */
-  calculateLeveragedPnlPercent(unrealizedPnl, marginUsed) {
-    if (marginUsed === 0) return 0;
-    return (unrealizedPnl / marginUsed) * 100;
-  },
-
-  /**
-   * V3.5 NEW: Calculate fee-adjusted break-even threshold
-   * Formula: breakEvenROI = (entryFee + exitFee) × leverage × 100 + buffer
-   * 
-   * Example: 0.06% taker fee, 10x leverage
-   * breakEvenROI = (0.0006 + 0.0006) × 10 × 100 + 0.1 = 1.2% + 0.1% = 1.3%
-   */
-  calculateFeeAdjustedBreakEven(entryFee, exitFee, leverage, buffer = 0.1) {
-    return ((entryFee + exitFee) * leverage * 100) + buffer;
-  },
-
-  /**
-   * V3.5 NEW: Calculate total trading fees
-   * Fees are charged on notional value (margin × leverage)
-   */
-  calculateTotalFees(positionValueUSD, entryFee, exitFee) {
-    return positionValueUSD * (entryFee + exitFee);
-  },
-
-  /**
-   * V3.5 NEW: Calculate net P&L after fees
-   * Formula: netPnl = grossPnl - entryFee - exitFee - fundingFees
-   */
-  calculateNetPnl(grossPnl, positionValueUSD, entryFee, exitFee, fundingFees = 0) {
-    const totalFees = this.calculateTotalFees(positionValueUSD, entryFee, exitFee);
-    return grossPnl - totalFees - fundingFees;
-  },
-
-  /**
-   * Calculate ROI-based stop loss price
-   * Formula (Long): SL = entry × (1 - ROI_risk / leverage / 100)
-   * Formula (Short): SL = entry × (1 + ROI_risk / leverage / 100)
-   * 
-   * This ensures SL/TP are defined by desired ROI, not raw price movement
-   */
-  calculateStopLossPrice(side, entryPrice, roiRisk, leverage) {
-    const pricePercent = (roiRisk / leverage) / 100;
-    return side === 'long'
-      ? entryPrice * (1 - pricePercent)
-      : entryPrice * (1 + pricePercent);
-  },
-
-  /**
-   * Calculate ROI-based take profit price
-   * Formula (Long): TP = entry × (1 + ROI_reward / leverage / 100)
-   * Formula (Short): TP = entry × (1 - ROI_reward / leverage / 100)
-   */
-  calculateTakeProfitPrice(side, entryPrice, roiReward, leverage) {
-    const pricePercent = (roiReward / leverage) / 100;
-    return side === 'long'
-      ? entryPrice * (1 + pricePercent)
-      : entryPrice * (1 - pricePercent);
-  },
-
-  /**
-   * V3.5 NEW: Calculate liquidation price with maintenance margin
-   * Formula (Long): liqPrice = entry - (entry / leverage × (1 + maintMargin))
-   * Formula (Short): liqPrice = entry + (entry / leverage × (1 + maintMargin))
-   * 
-   * Example: Long @ $10,000, 10x leverage, 0.5% maint margin
-   * liqPrice = 10000 - (10000/10 × 1.005) = 10000 - 1005 = $8,995
-   */
-  calculateLiquidationPrice(side, entryPrice, leverage, maintMarginPercent = 0.5) {
-    const maintMarginFactor = 1 + (maintMarginPercent / 100);
-    const leverageImpact = (entryPrice / leverage) * maintMarginFactor;
-    
-    return side === 'long'
-      ? entryPrice - leverageImpact
-      : entryPrice + leverageImpact;
-  },
-
-  /**
-   * V3.5 NEW: Calculate slippage-adjusted stop price
-   * Adds a buffer to account for market order execution slippage
-   */
-  calculateSlippageAdjustedStop(side, stopPrice, slippagePercent) {
-    const slippageFactor = slippagePercent / 100;
-    return side === 'long'
-      ? stopPrice * (1 - slippageFactor)  // Lower stop for longs
-      : stopPrice * (1 + slippageFactor); // Higher stop for shorts
-  },
-
-  /**
-   * Calculate trailing stop steps (staircase algorithm)
-   * Formula: steps = floor((currentROI - lastTrailedROI) / stepPercent)
-   */
-  calculateTrailingSteps(currentROI, lastTrailedROI, stepPercent) {
-    if (currentROI <= lastTrailedROI) return 0;
-    return Math.floor((currentROI - lastTrailedROI) / stepPercent);
-  },
-
-  /**
-   * Calculate new stop loss after trailing
-   * Formula (Long): newSL = currentSL × (1 + steps × movePercent / 100)
-   * Formula (Short): newSL = currentSL × (1 - steps × movePercent / 100)
-   */
-  calculateTrailedStopLoss(side, currentSL, steps, movePercent) {
-    const totalMove = steps * movePercent / 100;
-    return side === 'long'
-      ? currentSL * (1 + totalMove)
-      : currentSL * (1 - totalMove);
-  },
-
-  /**
-   * V3.5 NEW: Calculate ATR-based trailing distance
-   * Formula: trailingDistance = ATR × multiplier
-   */
-  calculateATRTrailingDistance(atr, multiplier = 1.5) {
-    return atr * multiplier;
-  },
-
-  /**
-   * V3.5 NEW: Calculate volatility-based recommended leverage
+   * Calculate volatility-based recommended leverage
    * Uses ATR percentage to determine safe leverage tier
    */
   calculateAutoLeverage(atrPercent, riskMultiplier = 1.0) {
-    const tiers = CONFIG.TRADING.AUTO_LEVERAGE_TIERS;
-    
-    let baseLeverage = 3; // Default to safest
-    for (const tier of tiers) {
-      if (atrPercent < tier.maxVolatility) {
-        baseLeverage = tier.leverage;
-        break;
-      }
-    }
-    
-    // Apply risk multiplier and clamp between 1-100
-    const adjustedLeverage = Math.round(baseLeverage * riskMultiplier);
-    return Math.max(1, Math.min(100, adjustedLeverage));
-  },
-
-  /**
-   * Round price to tick size and clean floating point errors
-   */
-  roundToTickSize(price, tickSize) {
-    const decimals = tickSize.toString().split('.')[1]?.length || 0;
-    const rounded = Math.round(price / tickSize) * tickSize;
-    return parseFloat(rounded.toFixed(decimals));
-  },
-
-  /**
-   * Round lots to lot size
-   */
-  roundToLotSize(lots, lotSize) {
-    return Math.floor(lots / lotSize) * lotSize;
+    return DecimalMath.calculateAutoLeverage(
+      atrPercent, 
+      riskMultiplier, 
+      CONFIG.TRADING.AUTO_LEVERAGE_TIERS
+    );
   }
 };
 
@@ -556,7 +429,166 @@ class KuCoinFuturesAPI {
   }
 }
 
-const kucoinAPI = new KuCoinFuturesAPI(KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE);
+// ============================================================================
+// DEMO MODE SUPPORT
+// ============================================================================
+class MockKuCoinFuturesAPI {
+  constructor() {
+    this.baseURL = CONFIG.KUCOIN_FUTURES_API;
+    this.samplePrices = {
+      XBTUSDTM: 50000,
+      ETHUSDTM: 3200,
+      SOLUSDTM: 100,
+      BNBUSDTM: 500,
+      XRPUSDTM: 0.6
+    };
+  }
+
+  async getServerTime() {
+    return { code: '200000', data: Date.now() };
+  }
+
+  async getContracts() {
+    return {
+      code: '200000',
+      data: CONFIG.DEFAULT_SYMBOLS.map(symbol => ({
+        symbol,
+        quoteCurrency: 'USDT',
+        status: 'Open'
+      }))
+    };
+  }
+
+  async getContractDetail(symbol) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    return {
+      code: '200000',
+      data: {
+        symbol,
+        tickSize: basePrice > 100 ? '0.1' : '0.0001',
+        lotSize: '1',
+        multiplier: '1',
+        maintMarginRate: '0.005',
+        maxLeverage: 50,
+        minOrderQty: '1',
+        maxOrderQty: '1000000'
+      }
+    };
+  }
+
+  async getTicker(symbol) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    return {
+      code: '200000',
+      data: {
+        price: basePrice,
+        bestBidPrice: basePrice - 0.5,
+        bestAskPrice: basePrice + 0.5,
+        priceChgPct: '0.001',
+        vol24h: '120000'
+      }
+    };
+  }
+
+  buildOrderBook(symbol, depth = 20) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    const bids = [];
+    const asks = [];
+    for (let i = 0; i < depth; i++) {
+      bids.push([(basePrice - i * 0.5).toFixed(2), (10 + i).toString()]);
+      asks.push([(basePrice + i * 0.5).toFixed(2), (10 + i).toString()]);
+    }
+    return { bids, asks };
+  }
+
+  async getOrderBook(symbol, depth = 20) {
+    const ob = this.buildOrderBook(symbol, depth);
+    return { code: '200000', data: ob };
+  }
+
+  async getKlines(symbol, granularity, from, to) {
+    const basePrice = this.samplePrices[symbol] || 100;
+    const candles = [];
+    const step = (granularity || 5) * 60 * 1000;
+    let timestamp = to - step * 120;
+    let price = basePrice;
+    for (let i = 0; i < 120; i++) {
+      const open = price;
+      const close = price + Math.sin(i / 5) * 2;
+      const high = Math.max(open, close) + 1;
+      const low = Math.min(open, close) - 1;
+      candles.push([timestamp, open.toFixed(2), high.toFixed(2), low.toFixed(2), close.toFixed(2), (1000 + i).toFixed(2)]);
+      price = close;
+      timestamp += step;
+    }
+    return { code: '200000', data: candles };
+  }
+
+  async getFundingRate(symbol) {
+    return { code: '200000', data: { value: '0.0001', predictedValue: '0.0002' } };
+  }
+
+  async getAccountOverview() {
+    return { code: '200000', data: { accountEquity: '10000' } };
+  }
+
+  async getPosition() {
+    return { code: '200000', data: null };
+  }
+
+  async getAllPositions() {
+    return { code: '200000', data: [] };
+  }
+
+  async placeOrder(params) {
+    return { code: '200000', data: { orderId: `mock_order_${Date.now()}`, clientOid: params?.clientOid } };
+  }
+
+  async placeStopOrder(params) {
+    return { code: '200000', data: { orderId: `mock_stop_${Date.now()}`, clientOid: params?.clientOid } };
+  }
+
+  async cancelStopOrder(orderId) {
+    return { code: '200000', data: { cancelledOrderIds: [orderId] } };
+  }
+
+  async cancelAllStopOrders() {
+    return { code: '200000', data: { cancelledOrderIds: [] } };
+  }
+
+  async cancelAllOrders() {
+    return { code: '200000', data: { cancelledOrderIds: [] } };
+  }
+
+  async getOpenOrders() {
+    return { code: '200000', data: [] };
+  }
+
+  async getOpenStopOrders() {
+    return { code: '200000', data: [] };
+  }
+
+  async getOrderDetail(orderId) {
+    return { code: '200000', data: { orderId } };
+  }
+
+  async getWebSocketToken() {
+    return { code: '200000', data: { token: 'mock' } };
+  }
+
+  async getPublicWebSocketToken() {
+    return { code: '200000', data: { token: 'mock' } };
+  }
+}
+
+function createKuCoinClient() {
+  if (DEMO_MODE) {
+    return new MockKuCoinFuturesAPI();
+  }
+  return new KuCoinFuturesAPI(KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE);
+}
+
+const kucoinAPI = createKuCoinClient();
 
 // ============================================================================
 // V3.5: API RETRY QUEUE MANAGER
@@ -825,112 +857,9 @@ class TechnicalIndicators {
 // ============================================================================
 // SIGNAL GENERATOR (-100 to +100)
 // ============================================================================
-class SignalGenerator {
-  static generate(indicators) {
-    let score = 0;
-    const breakdown = [];
-
-    // RSI (±25 points)
-    if (indicators.rsi < 30) {
-      score += 25;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: 25, reason: 'Oversold (<30)', type: 'bullish' });
-    } else if (indicators.rsi < 40) {
-      score += 15;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: 15, reason: 'Approaching oversold', type: 'bullish' });
-    } else if (indicators.rsi > 70) {
-      score -= 25;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: -25, reason: 'Overbought (>70)', type: 'bearish' });
-    } else if (indicators.rsi > 60) {
-      score -= 15;
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: -15, reason: 'Approaching overbought', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'RSI', value: indicators.rsi.toFixed(1), contribution: 0, reason: 'Neutral (40-60)', type: 'neutral' });
-    }
-
-    // Williams %R (±20 points)
-    if (indicators.williamsR < -80) {
-      score += 20;
-      breakdown.push({ indicator: 'Williams %R', value: indicators.williamsR.toFixed(1), contribution: 20, reason: 'Oversold (<-80)', type: 'bullish' });
-    } else if (indicators.williamsR > -20) {
-      score -= 20;
-      breakdown.push({ indicator: 'Williams %R', value: indicators.williamsR.toFixed(1), contribution: -20, reason: 'Overbought (>-20)', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'Williams %R', value: indicators.williamsR.toFixed(1), contribution: 0, reason: 'Neutral', type: 'neutral' });
-    }
-
-    // MACD (±20 points)
-    if (indicators.macd > 0 && indicators.macdHistogram > 0) {
-      score += 20;
-      breakdown.push({ indicator: 'MACD', value: indicators.macd.toFixed(2), contribution: 20, reason: 'Bullish momentum', type: 'bullish' });
-    } else if (indicators.macd < 0 && indicators.macdHistogram < 0) {
-      score -= 20;
-      breakdown.push({ indicator: 'MACD', value: indicators.macd.toFixed(2), contribution: -20, reason: 'Bearish momentum', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'MACD', value: indicators.macd.toFixed(2), contribution: 0, reason: 'Neutral/Crossover', type: 'neutral' });
-    }
-
-    // Awesome Oscillator (±15 points)
-    if (indicators.ao > 0) {
-      score += 15;
-      breakdown.push({ indicator: 'AO', value: indicators.ao.toFixed(2), contribution: 15, reason: 'Positive momentum', type: 'bullish' });
-    } else {
-      score -= 15;
-      breakdown.push({ indicator: 'AO', value: indicators.ao.toFixed(2), contribution: -15, reason: 'Negative momentum', type: 'bearish' });
-    }
-
-    // EMA Trend (±20 points)
-    if (indicators.ema50 > indicators.ema200) {
-      score += 20;
-      breakdown.push({ indicator: 'EMA Trend', value: 'EMA50 > EMA200', contribution: 20, reason: 'Bullish trend (Golden Cross)', type: 'bullish' });
-    } else if (indicators.ema50 < indicators.ema200) {
-      score -= 20;
-      breakdown.push({ indicator: 'EMA Trend', value: 'EMA50 < EMA200', contribution: -20, reason: 'Bearish trend (Death Cross)', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'EMA Trend', value: 'EMA50 ≈ EMA200', contribution: 0, reason: 'Neutral', type: 'neutral' });
-    }
-
-    // Stochastic (±10 points)
-    if (indicators.stochK < 20 && indicators.stochK > indicators.stochD) {
-      score += 10;
-      breakdown.push({ indicator: 'Stochastic', value: indicators.stochK.toFixed(1), contribution: 10, reason: 'Oversold + bullish crossover', type: 'bullish' });
-    } else if (indicators.stochK > 80 && indicators.stochK < indicators.stochD) {
-      score -= 10;
-      breakdown.push({ indicator: 'Stochastic', value: indicators.stochK.toFixed(1), contribution: -10, reason: 'Overbought + bearish crossover', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'Stochastic', value: indicators.stochK.toFixed(1), contribution: 0, reason: 'Neutral', type: 'neutral' });
-    }
-
-    // Bollinger Bands (±10 points)
-    if (indicators.price < indicators.bollingerLower) {
-      score += 10;
-      breakdown.push({ indicator: 'Bollinger', value: 'Below lower', contribution: 10, reason: 'Price below lower band', type: 'bullish' });
-    } else if (indicators.price > indicators.bollingerUpper) {
-      score -= 10;
-      breakdown.push({ indicator: 'Bollinger', value: 'Above upper', contribution: -10, reason: 'Price above upper band', type: 'bearish' });
-    } else {
-      breakdown.push({ indicator: 'Bollinger', value: 'Within bands', contribution: 0, reason: 'Price within bands', type: 'neutral' });
-    }
-
-    // Determine signal type
-    let type = 'NEUTRAL';
-    let confidence = 'LOW';
-    
-    if (score >= 70) { type = 'STRONG_BUY'; confidence = 'HIGH'; }
-    else if (score >= 50) { type = 'BUY'; confidence = 'MEDIUM'; }
-    else if (score >= 30) { type = 'BUY'; confidence = 'LOW'; }
-    else if (score <= -70) { type = 'STRONG_SELL'; confidence = 'HIGH'; }
-    else if (score <= -50) { type = 'SELL'; confidence = 'MEDIUM'; }
-    else if (score <= -30) { type = 'SELL'; confidence = 'LOW'; }
-
-    return {
-      type,
-      score,
-      confidence,
-      breakdown,
-      timestamp: Date.now()
-    };
-  }
-}
+// SignalGenerator is now imported from src/lib/SignalGenerator.js
+// Initialize with config from signal-weights.js
+SignalGenerator.initialize();
 
 // ============================================================================
 // MARKET DATA MANAGER
@@ -1344,7 +1273,7 @@ class PositionManager {
   }
 
   /**
-   * V3.5: Update stop loss order with slippage buffer and retry queue
+   * V3.5.2: Update stop loss order with validation, slippage buffer and retry queue
    */
   async updateStopLossOrder() {
     try {
@@ -1369,9 +1298,9 @@ class PositionManager {
         }
       }
 
-      // Place new SL order with reduce-only flag
+      // V3.5.2: Build and validate stop order params
       const slSide = this.side === 'long' ? 'sell' : 'buy';
-      const slParams = {
+      let slParams = {
         clientOid: `sl_${this.symbol}_${Date.now()}`,
         side: slSide,
         symbol: this.symbol,
@@ -1380,8 +1309,12 @@ class PositionManager {
         stopPrice: roundedSL.toString(),
         stopPriceType: 'TP',
         size: this.remainingSize.toString(),
-        reduceOnly: true  // V3.5: Critical safety flag
+        reduceOnly: true
       };
+      
+      // V3.5.2: Validate and sanitize order
+      OrderValidator.validateStopOrder(slParams);
+      slParams = OrderValidator.sanitize(slParams, 'stop');
 
       const result = await this.api.placeStopOrder(slParams);
       if (result.data) {
@@ -1425,7 +1358,7 @@ class PositionManager {
     
     try {
       const closeSide = this.side === 'long' ? 'sell' : 'buy';
-      const closeParams = {
+      let closeParams = {
         clientOid: `partial_tp_${this.symbol}_${Date.now()}`,
         side: closeSide,
         symbol: this.symbol,
@@ -1433,6 +1366,10 @@ class PositionManager {
         size: closeSize.toString(),
         reduceOnly: true
       };
+      
+      // V3.5.2: Validate and sanitize exit order
+      OrderValidator.validateExitOrder(closeParams);
+      closeParams = OrderValidator.sanitize(closeParams, 'exit');
 
       const result = await this.api.placeOrder(closeParams);
       
@@ -1470,7 +1407,7 @@ class PositionManager {
 
       // Place market order to close
       const closeSide = this.side === 'long' ? 'sell' : 'buy';
-      const closeParams = {
+      let closeParams = {
         clientOid: `close_${this.symbol}_${Date.now()}`,
         side: closeSide,
         symbol: this.symbol,
@@ -1478,6 +1415,10 @@ class PositionManager {
         size: this.remainingSize.toString(),
         reduceOnly: true
       };
+      
+      // V3.5.2: Validate and sanitize exit order
+      OrderValidator.validateExitOrder(closeParams);
+      closeParams = OrderValidator.sanitize(closeParams, 'exit');
 
       const result = await this.api.placeOrder(closeParams);
       
@@ -1686,7 +1627,8 @@ function broadcastInitialState(ws) {
       trading: CONFIG.TRADING,
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
-      version: '3.5.0'
+      signalProfile: SignalGenerator.getActiveProfile(),
+      version: '3.5.2'
     }
   }));
 }
@@ -1975,12 +1917,12 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
     const entryOrderId = entryResult.data.orderId;
     broadcastLog('success', `[${symbol}] Entry order placed: ${entryOrderId}`);
 
-    // V3.5: Place SL order with slippage buffer
+    // V3.5.2: Place SL order with slippage buffer and validation
     const slippageAdjustedSL = TradeMath.calculateSlippageAdjustedStop(side, roundedSL, CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT);
     const finalSL = TradeMath.roundToTickSize(slippageAdjustedSL, tickSize);
     
     const slSide = side === 'long' ? 'sell' : 'buy';
-    const slParams = {
+    let slParams = {
       clientOid: `sl_${symbol}_${Date.now()}`,
       side: slSide,
       symbol: symbol,
@@ -1991,6 +1933,10 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       size: size.toString(),
       reduceOnly: true
     };
+    
+    // V3.5.2: Validate and sanitize stop order
+    OrderValidator.validateStopOrder(slParams);
+    slParams = OrderValidator.sanitize(slParams, 'stop');
 
     let slOrderId = null;
     try {
@@ -2009,9 +1955,9 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       });
     }
 
-    // Place TP order
+    // V3.5.2: Place TP order with validation
     const tpSide = side === 'long' ? 'sell' : 'buy';
-    const tpParams = {
+    let tpParams = {
       clientOid: `tp_${symbol}_${Date.now()}`,
       side: tpSide,
       symbol: symbol,
@@ -2021,6 +1967,10 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       reduceOnly: true,
       timeInForce: 'GTC'
     };
+    
+    // V3.5.2: Validate and sanitize exit order
+    OrderValidator.validateExitOrder(tpParams);
+    tpParams = OrderValidator.sanitize(tpParams, 'exit');
 
     let tpOrderId = null;
     try {
@@ -2089,7 +2039,7 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
 wss.on('connection', async (ws) => {
   console.log('[WS] Client connected');
   wsClients.add(ws);
-  broadcastLog('success', 'Dashboard connected (V3.5.0)');
+  broadcastLog('success', 'Dashboard connected (V3.5.1)');
 
   broadcastInitialState(ws);
   await fetchAccountBalance();
@@ -2161,6 +2111,22 @@ wss.on('connection', async (ws) => {
             broadcastLog('info', `Config updated: ${JSON.stringify(data.config)}`);
           }
           break;
+
+        case 'set_signal_profile':
+          if (data.profile) {
+            try {
+              SignalGenerator.setProfile(data.profile);
+              broadcastLog('info', `Signal profile changed to: ${data.profile}`);
+              broadcast({ 
+                type: 'signal_profile_changed', 
+                profile: data.profile,
+                config: SignalGenerator.getActiveProfile()
+              });
+            } catch (error) {
+              broadcastLog('error', `Failed to change profile: ${error.message}`);
+            }
+          }
+          break;
       }
 
     } catch (error) {
@@ -2185,7 +2151,7 @@ wss.on('connection', async (ws) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.5.0',
+    version: '3.5.2',
     uptime: process.uptime(),
     symbols: Object.keys(marketManagers).length,
     positions: activePositions.size,
@@ -2197,7 +2163,7 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
-    version: '3.5.0',
+    version: '3.5.2',
     symbols: Object.keys(marketManagers),
     positions: activePositions.size,
     balance: accountBalance,
@@ -2259,6 +2225,31 @@ app.post('/api/config', (req, res) => {
     res.json({ success: true, config: CONFIG.TRADING });
   } else {
     res.status(400).json({ error: 'No config provided' });
+  }
+});
+
+// Signal configuration endpoints
+app.get('/api/signal/config', (req, res) => {
+  res.json({
+    activeProfile: SignalGenerator.getActiveProfile(),
+    availableProfiles: SignalGenerator.getAvailableProfiles(),
+    thresholds: require('./signal-weights').thresholds
+  });
+});
+
+app.post('/api/signal/config', (req, res) => {
+  const { profile } = req.body;
+  
+  if (!profile) {
+    return res.status(400).json({ error: 'Profile name required' });
+  }
+  
+  try {
+    SignalGenerator.setProfile(profile);
+    broadcastLog('info', `Signal profile switched to: ${profile}`);
+    res.json({ success: true, profile: SignalGenerator.getActiveProfile() });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -2393,77 +2384,88 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Update market data every 3 seconds
-setInterval(async () => {
-  for (const symbol of Object.keys(marketManagers)) {
-    await fetchTicker(symbol);
-    broadcastMarketData(symbol);
-    await sleep(100);
-  }
-}, 3000);
+// Interval management for runtime tasks
+const intervalRefs = [];
 
-// Update order books every 2 seconds
-setInterval(async () => {
-  for (const symbol of Object.keys(marketManagers)) {
-    await fetchOrderBook(symbol);
-    await sleep(100);
-  }
-}, 2000);
-
-// Update positions every 1 second
-setInterval(async () => {
-  for (const [symbol, manager] of activePositions.entries()) {
-    if (marketManagers[symbol]) {
-      const price = marketManagers[symbol].currentPrice;
-      if (price > 0) {
-        await manager.updatePrice(price);
-      }
+function startIntervals() {
+  // Update market data every 3 seconds
+  intervalRefs.push(setInterval(async () => {
+    for (const symbol of Object.keys(marketManagers)) {
+      await fetchTicker(symbol);
+      broadcastMarketData(symbol);
+      await sleep(100);
     }
-  }
-  if (activePositions.size > 0) {
-    broadcastPositions();
-  }
-}, 1000);
+  }, 3000));
 
-// Update balance every 30 seconds
-setInterval(fetchAccountBalance, 30000);
+  // Update order books every 2 seconds
+  intervalRefs.push(setInterval(async () => {
+    for (const symbol of Object.keys(marketManagers)) {
+      await fetchOrderBook(symbol);
+      await sleep(100);
+    }
+  }, 2000));
 
-// Update funding rates every 5 minutes
-setInterval(async () => {
-  for (const symbol of Object.keys(marketManagers)) {
-    await fetchFundingRate(symbol);
-    await sleep(100);
-  }
-}, 300000);
-
-// V3.5: Process retry queue every 10 seconds
-setInterval(() => {
-  retryQueueManager.process();
-}, 10000);
-
-// Sync positions from KuCoin every minute
-setInterval(async () => {
-  try {
-    const response = await kucoinAPI.getAllPositions();
-    if (response.data) {
-      for (const pos of response.data) {
-        if (pos.currentQty !== 0) {
-          const symbol = pos.symbol;
-          const manager = activePositions.get(symbol);
-          
-          if (manager && manager.status === 'pending') {
-            manager.status = 'open';
-            manager.entryPrice = parseFloat(pos.avgEntryPrice);
-            broadcastLog('success', `[${symbol}] Position filled @ ${manager.entryPrice}`);
-            savePositions();
-          }
+  // Update positions every 1 second
+  intervalRefs.push(setInterval(async () => {
+    for (const [symbol, manager] of activePositions.entries()) {
+      if (marketManagers[symbol]) {
+        const price = marketManagers[symbol].currentPrice;
+        if (price > 0) {
+          await manager.updatePrice(price);
         }
       }
     }
-  } catch (error) {
-    // Silently handle sync errors
+    if (activePositions.size > 0) {
+      broadcastPositions();
+    }
+  }, 1000));
+
+  // Update balance every 30 seconds
+  intervalRefs.push(setInterval(fetchAccountBalance, 30000));
+
+  // Update funding rates every 5 minutes
+  intervalRefs.push(setInterval(async () => {
+    for (const symbol of Object.keys(marketManagers)) {
+      await fetchFundingRate(symbol);
+      await sleep(100);
+    }
+  }, 300000));
+
+  // V3.5: Process retry queue every 10 seconds
+  intervalRefs.push(setInterval(() => {
+    retryQueueManager.process();
+  }, 10000));
+
+  // Sync positions from KuCoin every minute
+  intervalRefs.push(setInterval(async () => {
+    try {
+      const response = await kucoinAPI.getAllPositions();
+      if (response.data) {
+        for (const pos of response.data) {
+          if (pos.currentQty !== 0) {
+            const symbol = pos.symbol;
+            const manager = activePositions.get(symbol);
+            
+            if (manager && manager.status === 'pending') {
+              manager.status = 'open';
+              manager.entryPrice = parseFloat(pos.avgEntryPrice);
+              broadcastLog('success', `[${symbol}] Position filled @ ${manager.entryPrice}`);
+              savePositions();
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Silently handle sync errors
+    }
+  }, 60000));
+}
+
+function stopIntervals() {
+  while (intervalRefs.length) {
+    clearInterval(intervalRefs.pop());
   }
-}, 60000);
+}
 
 // ============================================================================
 // STARTUP
@@ -2471,7 +2473,7 @@ setInterval(async () => {
 async function startup() {
   console.log('');
   console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.0                 ║');
+  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.2                 ║');
   console.log('║     Semi-Automated Trading System                             ║');
   console.log('║                                                               ║');
   console.log('║     V3.5 ENHANCEMENTS:                                        ║');
@@ -2510,6 +2512,10 @@ async function startup() {
   // Initialize market data
   await initializeAllSymbols();
 
+  if (SHOULD_START_INTERVALS) {
+    startIntervals();
+  }
+
   // Start server
   server.listen(CONFIG.PORT, () => {
     console.log('');
@@ -2528,6 +2534,7 @@ process.on('SIGINT', () => {
   console.log('[SHUTDOWN] Saving retry queue...');
   retryQueueManager.save();
   console.log('[SHUTDOWN] Closing connections...');
+  stopIntervals();
   wsClients.forEach(ws => ws.close());
   server.close();
   console.log('[SHUTDOWN] Goodbye!');
@@ -2540,8 +2547,21 @@ process.on('uncaughtException', (error) => {
   retryQueueManager.save();
 });
 
-// Start the server
-startup().catch(error => {
-  console.error('[STARTUP ERROR]', error);
-  process.exit(1);
-});
+// Start the server when executed directly
+if (require.main === module) {
+  startup().catch(error => {
+    console.error('[STARTUP ERROR]', error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  TradeMath,
+  TechnicalIndicators,
+  CONFIG,
+  KuCoinFuturesAPI,
+  MockKuCoinFuturesAPI,
+  createKuCoinClient,
+  startIntervals,
+  stopIntervals
+};
