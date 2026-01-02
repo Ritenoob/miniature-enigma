@@ -7,6 +7,7 @@
 const ExecutionSimulator = require('./ExecutionSimulator');
 const SignalGenerator = require('../lib/SignalGenerator');
 const DecimalMath = require('../lib/DecimalMath');
+const TrailingStopPolicy = require('./TrailingStopPolicy');
 
 /**
  * Optimizer configuration schema
@@ -42,7 +43,15 @@ const OptimizerConfig = {
   
   // Variant isolation
   maxConcurrentVariants: 4,
-  maxPositionsPerVariant: 1
+  maxPositionsPerVariant: 1,
+  
+  // Trailing stop configuration
+  trailing: {
+    breakEvenBuffer: 0.1,
+    trailingStepPercent: 0.15,
+    trailingMovePercent: 0.05,
+    trailingMode: 'staircase'
+  }
 };
 
 /**
@@ -212,17 +221,22 @@ class LiveOptimizerController {
     const slRoi = 0.5;  // 0.5% ROI stop loss
     const tpRoi = 2.0;  // 2.0% ROI take profit
     
-    const stopLossPrice = DecimalMath.calculateStopLossPrice(side, entry.entryFillPrice, slRoi, leverage);
+    const stopLossPrice = TrailingStopPolicy.calculateInitialStop(side, entry.entryFillPrice, slRoi, leverage);
     const takeProfitPrice = DecimalMath.calculateTakeProfitPrice(side, entry.entryFillPrice, tpRoi, leverage);
     
-    // Store position
+    // Store position with trailing stop state
     variant.position = {
       ...entry,
       symbol,
       stopLossPrice,
       takeProfitPrice,
       signal,
-      openedAt: Date.now()
+      openedAt: Date.now(),
+      // Trailing stop state
+      lastROIStep: 0,
+      breakEvenArmed: false,
+      entryFeeRate: entry.entryFeeRate || 0.0006,
+      expectedExitFeeRate: 0.0006
     };
     
     console.log(`[Optimizer] ${variant.profileName}: Opened ${side} position on ${symbol} @ ${entry.entryFillPrice.toFixed(2)}`);
@@ -247,18 +261,59 @@ class LiveOptimizerController {
   }
 
   /**
-   * Check if position should be exited (SL/TP hit)
+   * Update trailing stop for position and check exit conditions
    */
   checkExitConditions(variant, currentPrice) {
     if (!variant.position) return;
     
-    const { side, stopLossPrice, takeProfitPrice } = variant.position;
+    const position = variant.position;
+    const { side, stopLossPrice, takeProfitPrice } = position;
+    
+    // First, update trailing stop if position has current MTM
+    if (position.currentMtm) {
+      const currentROI = position.currentMtm.unrealizedROI;
+      
+      // Ask TrailingStopPolicy if stop should be updated
+      const trailingUpdate = TrailingStopPolicy.nextStop({
+        side,
+        entryPrice: position.entryFillPrice,
+        currentStop: position.stopLossPrice,
+        currentROI,
+        lastROIStep: position.lastROIStep || 0,
+        leverage: position.leverage,
+        entryFeeRate: position.entryFeeRate || 0.0006,
+        exitFeeRate: position.expectedExitFeeRate || 0.0006,
+        config: this.config.trailing || TrailingStopPolicy.getDefaultConfig(),
+        breakEvenArmed: position.breakEvenArmed || false
+      });
+      
+      // Update stop if it tightened
+      if (trailingUpdate.reason !== 'no_change') {
+        position.stopLossPrice = trailingUpdate.newStopPrice;
+        position.lastROIStep = trailingUpdate.newLastROIStep;
+        position.breakEvenArmed = trailingUpdate.breakEvenArmed;
+        
+        // Log stop update for paper trading
+        if (this.config.paperTrading) {
+          console.log(
+            `[Optimizer] ${variant.profileName}: Trailing stop updated to ${trailingUpdate.newStopPrice.toFixed(2)} ` +
+            `(${trailingUpdate.reason}, ROI: ${currentROI.toFixed(2)}%)`
+          );
+        }
+        
+        // For real trading, would call StopOrderStateMachine.updateStop() here
+        // if (this.config.realTradingEnabled && variant.stopOrderStateMachine) {
+        //   variant.stopOrderStateMachine.updateStop(trailingUpdate.newStopPrice, stopParams);
+        // }
+      }
+    }
+    
     let exitReason = null;
     
-    // Check stop loss
-    if (side === 'long' && currentPrice <= stopLossPrice) {
+    // Check stop loss (using potentially updated stop price)
+    if (side === 'long' && currentPrice <= position.stopLossPrice) {
       exitReason = 'stop_loss';
-    } else if (side === 'short' && currentPrice >= stopLossPrice) {
+    } else if (side === 'short' && currentPrice >= position.stopLossPrice) {
       exitReason = 'stop_loss';
     }
     

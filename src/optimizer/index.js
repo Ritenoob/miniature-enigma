@@ -4,6 +4,7 @@
 
 const ExecutionSimulator = require('./ExecutionSimulator');
 const LiveOptimizerController = require('./LiveOptimizerController');
+const TrailingStopPolicy = require('./TrailingStopPolicy');
 
 module.exports = {
   // Execution simulation
@@ -13,5 +14,8 @@ module.exports = {
   // Live optimizer
   LiveOptimizerController,
   OptimizerConfig: LiveOptimizerController.OptimizerConfig,
-  TradingVariant: LiveOptimizerController.TradingVariant
+  TradingVariant: LiveOptimizerController.TradingVariant,
+  
+  // Trailing stop policy
+  TrailingStopPolicy
 };

@@ -377,3 +377,249 @@ For issues or questions:
 **Version**: 1.0.0  
 **Last Updated**: 2026-01-02  
 **Status**: Production Ready
+
+## TrailingStopPolicy
+
+### Purpose
+Implements strict trailing stop logic with fee-adjusted break-even and profit-lock behavior. Compatible with production StopOrderStateMachine semantics for safe stop order updates.
+
+### Features
+- **Fee-Adjusted Break-Even**: Automatically moves stop to entry + buffer once ROI covers fees
+- **Aggressive Profit-Lock**: Trails stop using staircase method after break-even
+- **Monotonic Movement**: Guarantees stop never moves adversely (down for long, up for short)
+- **Leverage-Aware**: All calculations account for position leverage
+- **Production-Compatible**: Designed for both paper and real trading
+
+### Break-Even Logic
+
+The policy calculates a fee-adjusted break-even ROI threshold:
+
+```javascript
+breakEvenROI = (entryFee + exitFee) × leverage × 100 + buffer
+```
+
+Once current ROI >= breakEvenROI:
+- **Long**: Move stop to `entryPrice × (1 + buffer/leverage/100)`
+- **Short**: Move stop to `entryPrice × (1 - buffer/leverage/100)`
+
+### Trailing Logic (Staircase Mode)
+
+After break-even is armed, the stop trails using a staircase pattern:
+
+1. **Calculate Progress**: `roiProgress = currentROI - breakEvenROI`
+2. **Determine Step**: `currentStep = floor(roiProgress / trailingStepPercent)`
+3. **Trail on New Step**: When crossing a step threshold, move stop closer by `trailingMovePercent`
+
+Example with defaults (0.15% steps, 0.05% move):
+- At 1.5% ROI: Break-even triggered
+- At 1.65% ROI: Trail stop (step 1)
+- At 1.80% ROI: Trail stop (step 2)
+- At 1.95% ROI: Trail stop (step 3)
+
+### Usage
+
+#### Basic Usage
+```javascript
+const TrailingStopPolicy = require('./src/optimizer/TrailingStopPolicy');
+
+// On each price tick
+const update = TrailingStopPolicy.nextStop({
+  side: 'long',
+  entryPrice: 50000,
+  currentStop: 49750,
+  currentROI: 1.8,           // Current net ROI %
+  lastROIStep: 0,            // Last step that triggered trail
+  leverage: 10,
+  entryFeeRate: 0.0006,
+  exitFeeRate: 0.0006,
+  config: {
+    breakEvenBuffer: 0.1,
+    trailingStepPercent: 0.15,
+    trailingMovePercent: 0.05,
+    trailingMode: 'staircase'
+  },
+  breakEvenArmed: false
+});
+
+if (update.reason !== 'no_change') {
+  console.log('Stop updated:', update.newStopPrice);
+  console.log('Reason:', update.reason);
+  console.log('Step:', update.newLastROIStep);
+  
+  // Update position
+  position.stopLossPrice = update.newStopPrice;
+  position.lastROIStep = update.newLastROIStep;
+  position.breakEvenArmed = update.breakEvenArmed;
+}
+```
+
+#### Calculate Initial Stop
+```javascript
+const initialStop = TrailingStopPolicy.calculateInitialStop(
+  'long',
+  50000,  // entry price
+  0.5,    // SL ROI %
+  10      // leverage
+);
+// Returns: 49750 (0.5% ROI loss at 10x = 0.05% price move)
+```
+
+#### Get Default Config
+```javascript
+const defaults = TrailingStopPolicy.getDefaultConfig();
+// Returns: {
+//   breakEvenBuffer: 0.1,
+//   trailingStepPercent: 0.15,
+//   trailingMovePercent: 0.05,
+//   trailingMode: 'staircase'
+// }
+```
+
+#### Validate Config
+```javascript
+try {
+  TrailingStopPolicy.validateConfig(config);
+  console.log('Config valid');
+} catch (error) {
+  console.error('Invalid config:', error.message);
+}
+```
+
+### Configuration Options
+
+| Parameter | Default | Range | Description |
+|-----------|---------|-------|-------------|
+| `breakEvenBuffer` | 0.1 | 0-10 | Additional ROI % buffer before break-even trigger |
+| `trailingStepPercent` | 0.15 | 0.01-10 | ROI % increment for each trailing step |
+| `trailingMovePercent` | 0.05 | 0.01-10 | % to move stop on each step |
+| `trailingMode` | 'staircase' | enum | Trailing mode: 'staircase', 'atr', 'dynamic' |
+
+### Integration with LiveOptimizerController
+
+The LiveOptimizerController automatically uses TrailingStopPolicy for all paper positions:
+
+```javascript
+// Position state includes trailing stop tracking
+variant.position = {
+  ...entry,
+  stopLossPrice,        // Current stop price
+  lastROIStep: 0,       // Last ROI step
+  breakEvenArmed: false,// Break-even status
+  entryFeeRate: 0.0006,
+  expectedExitFeeRate: 0.0006
+};
+
+// On each market update, trailing stop is evaluated
+controller.onMarketUpdate(symbol, indicators, currentPrice);
+// Internally calls TrailingStopPolicy.nextStop() and updates position
+```
+
+### Production Integration
+
+For real trading with StopOrderStateMachine:
+
+```javascript
+// In LiveOptimizerController checkExitConditions()
+if (trailingUpdate.reason !== 'no_change') {
+  if (this.config.realTradingEnabled && variant.stopOrderStateMachine) {
+    // Use safe "place new before cancel old" pattern
+    await variant.stopOrderStateMachine.updateStop(
+      trailingUpdate.newStopPrice,
+      {
+        symbol: position.symbol,
+        side: position.side === 'long' ? 'sell' : 'buy',
+        stopPrice: trailingUpdate.newStopPrice,
+        size: position.size,
+        reduceOnly: true
+      }
+    );
+  }
+}
+```
+
+### Safety Guarantees
+
+1. **Monotonic Movement**:
+   - Long positions: Stop never decreases
+   - Short positions: Stop never increases
+
+2. **Fee-Adjusted**:
+   - Break-even accounts for entry + exit fees
+   - ROI calculations are net of all costs
+
+3. **Leverage-Aware**:
+   - Higher leverage = higher break-even ROI requirement
+   - Trailing respects leveraged price movements
+
+4. **Validation**:
+   - All config parameters validated
+   - Invalid configurations rejected with clear errors
+
+5. **Production-Safe**:
+   - Compatible with StopOrderStateMachine
+   - No unsafe state transitions
+
+### Example Scenarios
+
+#### Scenario 1: Quick Profit Lock
+```
+Entry: $50,000 (10x leverage)
+Initial SL: $49,750 (-0.5% ROI)
+
+Price rises to $50,065 (1.3% ROI)
+→ Break-even triggered
+→ Stop moves to $50,005
+
+Price rises to $50,090 (1.8% ROI)  
+→ First trailing step crossed
+→ Stop moves to $50,045
+
+Price drops to $50,040
+→ Stop hit, exit at break-even
+→ Protected from giving back gains
+```
+
+#### Scenario 2: Extended Run
+```
+Entry: $50,000 (10x leverage)
+Price rises to $50,200 (4% ROI)
+
+Break-even at 1.3% ROI: Stop → $50,005
+Step 1 at 1.45%: Stop → $50,025
+Step 2 at 1.60%: Stop → $50,045
+Step 3 at 1.75%: Stop → $50,065
+...continuing to trail up
+
+Exit: Stop trails price up, locks in majority of gains
+```
+
+### Tuning Guidelines
+
+**Conservative Trailing** (preserve more profits):
+- Increase `trailingStepPercent` (e.g., 0.25%)
+- Decrease `trailingMovePercent` (e.g., 0.03%)
+- Result: Trails less frequently, locks in more profit
+
+**Aggressive Trailing** (let profits run):
+- Decrease `trailingStepPercent` (e.g., 0.10%)
+- Increase `trailingMovePercent` (e.g., 0.08%)
+- Result: Trails more frequently, gives more room
+
+**Early Break-Even**:
+- Decrease `breakEvenBuffer` (e.g., 0.05%)
+- Result: Moves to break-even sooner
+
+**Delayed Break-Even**:
+- Increase `breakEvenBuffer` (e.g., 0.2%)
+- Result: Requires more profit before protection
+
+### References
+
+- **DecimalMath**: Fee-adjusted break-even calculations
+- **ConfigSchema**: Default parameters (BREAK_EVEN_BUFFER, TRAILING_STEP_PERCENT, etc.)
+- **StopOrderStateMachine**: Production stop order management
+- **Tests**: `/tests/trailing-stop-policy.test.js`
+
+---
+
+**Note**: The 'atr' and 'dynamic' trailing modes are reserved for future implementation. Currently, only 'staircase' mode is supported.
