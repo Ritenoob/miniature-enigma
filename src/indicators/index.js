@@ -7,6 +7,9 @@ const RSIIndicator = require('./RSIIndicator');
 const MACDIndicator = require('./MACDIndicator');
 const WilliamsRIndicator = require('./WilliamsRIndicator');
 const AwesomeOscillator = require('./AwesomeOscillator');
+const KDJIndicator = require('./KDJIndicator');
+const OBVIndicator = require('./OBVIndicator');
+const ADXIndicator = require('./ADXIndicator');
 
 /**
  * Factory function to create an indicator instance
@@ -20,7 +23,10 @@ function createIndicator(type, config = {}) {
     macd: MACDIndicator,
     williamsR: WilliamsRIndicator,
     ao: AwesomeOscillator,
-    awesomeOscillator: AwesomeOscillator
+    awesomeOscillator: AwesomeOscillator,
+    kdj: KDJIndicator,
+    obv: OBVIndicator,
+    adx: ADXIndicator
   };
 
   const IndicatorClass = indicatorMap[type.toLowerCase()];
@@ -42,7 +48,10 @@ function getAvailableIndicators() {
     'macd',
     'williamsR',
     'ao',
-    'awesomeOscillator'
+    'awesomeOscillator',
+    'kdj',
+    'obv',
+    'adx'
   ];
 }
 
@@ -52,6 +61,9 @@ module.exports = {
   MACDIndicator,
   WilliamsRIndicator,
   AwesomeOscillator,
+  KDJIndicator,
+  OBVIndicator,
+  ADXIndicator,
   
   // Factory and helpers
   createIndicator,

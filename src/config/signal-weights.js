@@ -48,6 +48,35 @@ module.exports = {
     // Bollinger Bands - Volatility
     bollinger: {
       max: 10
+    },
+
+    // KDJ - K-D-J Stochastic (V4.0)
+    kdj: {
+      max: 15,
+      oversold_j: 0,           // J below this = extreme oversold
+      overbought_j: 100,       // J above this = extreme overbought
+      crossover_weight: 1.5    // Multiplier for crossover signals
+    },
+
+    // OBV - On-Balance Volume (V4.0)
+    obv: {
+      max: 10,
+      slope_threshold: 0.5,    // Minimum slope to consider trending
+      use_ema: true            // Use EMA smoothing
+    },
+
+    // ADX - Trend Strength (V4.0)
+    adx: {
+      max: 10,
+      trend_threshold: 25,     // Minimum ADX to consider trending
+      strong_trend: 40         // ADX above this = strong trend
+    },
+
+    // DOM - Depth of Market (V4.0 - LIVE ONLY)
+    dom: {
+      max: 20,
+      imbalance_5_threshold: 0.2,    // Significant imbalance at depth 5
+      spread_threshold_bps: 5.0      // Wide spread threshold in basis points
     }
   },
 
