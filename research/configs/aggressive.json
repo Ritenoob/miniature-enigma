@@ -1,0 +1,81 @@
+{
+  "name": "Aggressive Momentum",
+  "version": "1.0.0",
+  "created": "2024-12-30",
+  "description": "High-frequency momentum strategy with tight stops and fast profit locks",
+  "strategy_template": "T3_hybrid_voting",
+  "recommended_symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  "recommended_timeframes": ["1m", "5m"],
+  "signal_config": {
+    "weights": {
+      "rsi": {
+        "max": 30,
+        "oversold": 35,
+        "oversoldMild": 45,
+        "overbought": 65,
+        "overboughtMild": 55
+      },
+      "williamsR": {
+        "max": 25,
+        "oversold": -75,
+        "overbought": -25
+      },
+      "macd": {
+        "max": 20
+      },
+      "ao": {
+        "max": 20
+      },
+      "emaTrend": {
+        "max": 10
+      },
+      "stochastic": {
+        "max": 15,
+        "oversold": 25,
+        "overbought": 75
+      },
+      "bollinger": {
+        "max": 10
+      }
+    },
+    "thresholds": {
+      "strongBuy": 65,
+      "buy": 45,
+      "buyWeak": 25,
+      "strongSell": -65,
+      "sell": -45,
+      "sellWeak": -25
+    }
+  },
+  "backtest_config": {
+    "positionSizePercent": 0.6,
+    "leverage": 20,
+    "stopLossROI": 0.3,
+    "takeProfitROI": 1.5,
+    "maxPositions": 5,
+    "maxTradesPerDay": 20,
+    "cooldownBars": 2,
+    "fillModel": "taker",
+    "makerFee": 0.0002,
+    "takerFee": 0.0006,
+    "slippageModel": "vol_scaled",
+    "signalThreshold": 45,
+    "useRegimeFilter": false
+  },
+  "risk_profile": {
+    "max_drawdown_target": 0.15,
+    "min_sharpe": 1.5,
+    "min_win_rate": 0.45,
+    "expected_trades_per_day": 10
+  },
+  "notes": [
+    "Tight SL (0.3% ROI) for momentum-heavy approach",
+    "Fast profit lock at 1.5% ROI",
+    "High leverage (20x) for aggressive returns",
+    "Momentum indicators (RSI, W%R, Stoch) weighted heavily",
+    "Trend following (EMA) has lower weight",
+    "No regime filter - trades all conditions",
+    "High trade frequency expected",
+    "Requires active monitoring"
+  ]
+}

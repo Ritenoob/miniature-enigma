@@ -1,0 +1,89 @@
+{
+  "name": "Conservative Trend Following",
+  "version": "1.0.0",
+  "created": "2024-12-30",
+  "description": "Low-risk trend following strategy with wider stops and regime filtering",
+  "strategy_template": "T2_trend_continuation",
+  "recommended_symbols": ["BTCUSDT", "ETHUSDT"],
+  "recommended_timeframes": ["15m", "1h", "4h"],
+  "signal_config": {
+    "weights": {
+      "rsi": {
+        "max": 10,
+        "oversold": 25,
+        "oversoldMild": 35,
+        "overbought": 75,
+        "overboughtMild": 65
+      },
+      "williamsR": {
+        "max": 10,
+        "oversold": -85,
+        "overbought": -15
+      },
+      "macd": {
+        "max": 30
+      },
+      "ao": {
+        "max": 15
+      },
+      "emaTrend": {
+        "max": 35
+      },
+      "stochastic": {
+        "max": 5,
+        "oversold": 15,
+        "overbought": 85
+      },
+      "bollinger": {
+        "max": 5
+      },
+      "adx": {
+        "max": 20
+      },
+      "obv": {
+        "max": 15
+      }
+    },
+    "thresholds": {
+      "strongBuy": 75,
+      "buy": 55,
+      "buyWeak": 35,
+      "strongSell": -75,
+      "sell": -55,
+      "sellWeak": -35
+    }
+  },
+  "backtest_config": {
+    "positionSizePercent": 0.3,
+    "leverage": 8,
+    "stopLossROI": 0.6,
+    "takeProfitROI": 3.0,
+    "maxPositions": 2,
+    "maxTradesPerDay": 5,
+    "cooldownBars": 15,
+    "fillModel": "taker",
+    "makerFee": 0.0002,
+    "takerFee": 0.0006,
+    "slippageModel": "spread_based",
+    "signalThreshold": 55,
+    "useRegimeFilter": true,
+    "allowedRegimes": ["trending"]
+  },
+  "risk_profile": {
+    "max_drawdown_target": 0.10,
+    "min_sharpe": 2.0,
+    "min_win_rate": 0.55,
+    "expected_trades_per_day": 2
+  },
+  "notes": [
+    "Wider SL (0.6% ROI) for trend breathing room",
+    "Higher TP (3.0% ROI) to capture full trends",
+    "Lower leverage (8x) for conservative risk",
+    "Heavy weight on trend indicators (EMA, MACD, ADX, OBV)",
+    "Light weight on oscillators",
+    "Only trades in trending regimes (ADX >= 25)",
+    "Low trade frequency, longer holds",
+    "Lower drawdown target (10%)",
+    "Suitable for hands-off operation"
+  ]
+}

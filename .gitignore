@@ -6,3 +6,19 @@ retry_queue.json
 npm-debug.log*
 .DS_Store
 coverage/
+
+# TypeScript
+dist/
+*.tsbuildinfo
+
+# Research artifacts
+research/data/*.csv
+research/data/*.json
+research/reports/*.json
+research/reports/*.csv
+research/reports/*.html
+research/configs/top_configs/*.json
+!research/configs/top_configs/.gitkeep
+
+# Temporary files
+/tmp/

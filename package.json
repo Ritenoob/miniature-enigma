@@ -6,7 +6,14 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "research:fetch-ohlcv": "ts-node research/scripts/fetch-data.ts",
+    "research:backtest": "ts-node research/scripts/run-backtest.ts",
+    "research:optimize": "ts-node research/scripts/run-optimize.ts",
+    "research:forward-shadow": "ts-node research/scripts/run-forward.ts",
+    "research:report": "ts-node research/scripts/generate-report.ts",
+    "test:research": "jest --config jest.research.config.js",
+    "test:invariants": "jest --config jest.research.config.js --testPathPattern=property"
   },
   "keywords": [
     "kucoin",
@@ -34,7 +41,14 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "fast-check": "^3.15.0"
+    "@types/decimal.js": "^0.0.32",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.3",
+    "fast-check": "^3.15.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=16.0.0"

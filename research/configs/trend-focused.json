@@ -1,0 +1,96 @@
+{
+  "name": "Trend Focused High ADX",
+  "version": "1.0.0",
+  "created": "2024-12-30",
+  "description": "Strong trend continuation with ADX filter and directional indicators",
+  "strategy_template": "T2_trend_continuation",
+  "recommended_symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"],
+  "recommended_timeframes": ["15m", "1h"],
+  "signal_config": {
+    "weights": {
+      "rsi": {
+        "max": 15,
+        "oversold": 30,
+        "oversoldMild": 40,
+        "overbought": 70,
+        "overboughtMild": 60
+      },
+      "williamsR": {
+        "max": 10,
+        "oversold": -80,
+        "overbought": -20
+      },
+      "macd": {
+        "max": 30,
+        "fastPeriod": 12,
+        "slowPeriod": 26,
+        "signalPeriod": 9
+      },
+      "ao": {
+        "max": 15
+      },
+      "emaTrend": {
+        "max": 30,
+        "period1": 50,
+        "period2": 200
+      },
+      "stochastic": {
+        "max": 5,
+        "oversold": 20,
+        "overbought": 80
+      },
+      "bollinger": {
+        "max": 5
+      },
+      "adx": {
+        "max": 25,
+        "threshold": 25
+      },
+      "obv": {
+        "max": 15,
+        "smoothPeriod": 10
+      }
+    },
+    "thresholds": {
+      "strongBuy": 70,
+      "buy": 50,
+      "buyWeak": 30,
+      "strongSell": -70,
+      "sell": -50,
+      "sellWeak": -30
+    }
+  },
+  "backtest_config": {
+    "positionSizePercent": 0.4,
+    "leverage": 12,
+    "stopLossROI": 0.5,
+    "takeProfitROI": 2.5,
+    "maxPositions": 3,
+    "maxTradesPerDay": 8,
+    "cooldownBars": 10,
+    "fillModel": "taker",
+    "makerFee": 0.0002,
+    "takerFee": 0.0006,
+    "slippageModel": "vol_scaled",
+    "signalThreshold": 50,
+    "useRegimeFilter": true,
+    "allowedRegimes": ["trending"]
+  },
+  "risk_profile": {
+    "max_drawdown_target": 0.12,
+    "min_sharpe": 1.8,
+    "min_win_rate": 0.50,
+    "expected_trades_per_day": 3
+  },
+  "notes": [
+    "ADX >= 25 filter ensures strong trends only",
+    "High weight on EMA (30), MACD (30), ADX (25)",
+    "OBV confirmation (15) for volume support",
+    "Moderate leverage (12x)",
+    "Stop at 0.5% ROI, TP at 2.5% ROI",
+    "DI+ and DI- help determine trend direction",
+    "Filters out ranging/choppy markets",
+    "Medium trade frequency",
+    "Best for trending market conditions"
+  ]
+}
