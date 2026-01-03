@@ -1,0 +1,29 @@
+Generate the full Optimization & Experimentation System described in Prompts 0–5, integrated into the existing kucoin-analysis-dashboard-main repo without breaking server.js runtime.
+
+Deliver:
+1) Complete file tree
+2) All code (TS preferred, but incremental: keep server.js operational)
+3) Tests (Jest + fast-check)
+4) README with commands:
+   - fetch data
+   - run backtests
+   - run optimization
+   - run live forward shadow tests
+   - export top configs
+5) Sample configs:
+   - aggressive (tight SL, fast lock)
+   - conservative (lower DD)
+   - trend-focused
+   - mean-reversion-focused
+6) Default settings reflecting Mirko’s preferences:
+   - dynamic sizing by signal strength + volatility
+   - auto leverage (ATR% tiering) with manual override
+   - early stop tightening preference (small loss > larger loss), implemented as stop tightening logic, not forced exit
+   - MTF optional toggle; optimizer searches MTF pairs
+
+Hard requirements:
+- Reproducibility (seeded)
+- Walk-forward with purge
+- Multi-objective ranking + Pareto
+- DOM features validated live only, not claimed from historical backtests
+
