@@ -5,7 +5,7 @@
  */
 
 module.exports = {
-  // Current weights (your v3.4.2 defaults)
+  // Current weights (your v3.5.0 defaults)
   weights: {
     // RSI - Relative Strength Index (Momentum)
     rsi: {
