@@ -4,16 +4,19 @@ This document explains the security scanning architecture for the KuCoin Futures
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Why Advanced Setup?](#why-advanced-setup)
-- [Architecture](#architecture)
-- [First-Time Setup](#first-time-setup)
-- [Validation & Monitoring](#validation--monitoring)
-- [Configuration Details](#configuration-details)
+- [📖 Overview](#-overview)
+- [🤔 Why Advanced Setup?](#-why-advanced-setup)
+- [🏗️ Architecture](#️-architecture)
+- [🚀 First-Time Setup](#-first-time-setup)
+- [✅ Validation & Monitoring](#-validation--monitoring)
+- [⚙️ Configuration Details](#️-configuration-details)
+- [🔧 Troubleshooting](#-troubleshooting)
+- [📚 Additional Resources](#-additional-resources)
+- [🛡️ Security Policy](#️-security-policy)
 
 ---
 
-## Overview
+## 📖 Overview
 
 This repository uses **CodeQL Advanced Setup** for automated security scanning. CodeQL analyzes the codebase to detect:
 
@@ -31,7 +34,7 @@ This repository uses **CodeQL Advanced Setup** for automated security scanning. 
 
 ---
 
-## Why Advanced Setup?
+## 🤔 Why Advanced Setup?
 
 We chose **Advanced Setup** over **Default Setup** for several reasons:
 
@@ -68,7 +71,7 @@ We chose **Advanced Setup** over **Default Setup** for several reasons:
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ### Workflow Configuration
 
@@ -122,7 +125,7 @@ matrix:
 
 ---
 
-## First-Time Setup
+## 🚀 First-Time Setup
 
 ### Prerequisites
 
@@ -200,7 +203,7 @@ git push origin main
 
 ---
 
-## Validation & Monitoring
+## ✅ Validation & Monitoring
 
 ### Verify Setup is Working
 
@@ -270,7 +273,7 @@ gh run list --workflow=codeql.yml --limit 5
 
 ---
 
-## Configuration Details
+## ⚙️ Configuration Details
 
 ### Customization Options
 
@@ -351,7 +354,7 @@ Then reference in workflow:
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 For issues with security scanning, see:
 
@@ -377,7 +380,7 @@ For issues with security scanning, see:
 
 ---
 
-## Additional Resources
+## 📚 Additional Resources
 
 ### GitHub Documentation
 
@@ -399,7 +402,7 @@ For issues with security scanning, see:
 
 ---
 
-## Security Policy
+## 🛡️ Security Policy
 
 For reporting security vulnerabilities, see our [Security Policy](../SECURITY.md) (if exists) or contact the repository maintainers directly.
 

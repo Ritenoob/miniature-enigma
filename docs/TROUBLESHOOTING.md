@@ -4,14 +4,16 @@ This guide helps you resolve common issues when working with the KuCoin Futures 
 
 ## Table of Contents
 
-- [Security Scanning Issues](#security-scanning-issues)
-- [CI/Build Failures](#cibuild-failures)
-- [API Connection Issues](#api-connection-issues)
-- [Installation Problems](#installation-problems)
+- [🔒 Security Scanning Issues](#-security-scanning-issues)
+- [🔨 CI/Build Failures](#-cibuild-failures)
+- [🔌 API Connection Issues](#-api-connection-issues)
+- [📦 Installation Problems](#-installation-problems)
+- [💬 Getting Help](#-getting-help)
+- [📚 Additional Resources](#-additional-resources)
 
 ---
 
-## Security Scanning Issues
+## 🔒 Security Scanning Issues
 
 ### CodeQL Configuration Conflict
 
@@ -79,7 +81,7 @@ The CodeQL workflow doesn't appear in the Actions tab or isn't triggered.
 
 ---
 
-## CI/Build Failures
+## 🔨 CI/Build Failures
 
 ### Test Failures
 
@@ -122,7 +124,7 @@ The CI workflow fails with test errors.
 
 ---
 
-## API Connection Issues
+## 🔌 API Connection Issues
 
 ### KuCoin API Authentication Failures
 
@@ -176,7 +178,7 @@ Error 429 (Too Many Requests) or rate limit messages.
 
 ---
 
-## Installation Problems
+## 📦 Installation Problems
 
 ### npm install Fails
 
@@ -222,7 +224,7 @@ Server doesn't start in demo mode or shows API errors.
 
 ---
 
-## Getting Help
+## 💬 Getting Help
 
 If you can't resolve your issue:
 
@@ -243,7 +245,7 @@ If you can't resolve your issue:
 
 ---
 
-## Additional Resources
+## 📚 Additional Resources
 
 - **KuCoin API Documentation:** https://docs.kucoin.com/futures/
 - **Node.js Documentation:** https://nodejs.org/docs/
