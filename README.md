@@ -262,6 +262,62 @@ Navigate to `http://localhost:3001`
 
 ---
 
+## 🔒 Security Scanning Setup
+
+This repository uses **CodeQL Advanced** configuration for security scanning. If you're contributing or forking this repository, you may encounter conflicts with GitHub's default CodeQL setup.
+
+### ⚠️ Common Issue: CodeQL Configuration Conflict
+
+**Error Message:**
+```
+CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled
+```
+
+**Cause:** GitHub's default CodeQL setup and our advanced workflow (`.github/workflows/codeql.yml`) cannot coexist.
+
+### ✅ Solution: Disable Default CodeQL Setup
+
+If you see this error, follow these steps:
+
+1. **Navigate to Repository Settings**
+   - Go to your repository on GitHub
+   - Click on **Settings** tab
+   - Select **Code security and analysis** from the sidebar
+
+2. **Disable Default Setup**
+   - Find the **Code scanning** section
+   - If you see "CodeQL analysis" with a **Configure** button showing "Default" setup
+   - Click the **⋯** (three dots) menu next to it
+   - Select **Disable CodeQL**
+   - Confirm the action
+
+3. **Verify Advanced Setup is Active**
+   - The advanced workflow (`.github/workflows/codeql.yml`) will automatically run on:
+     - Push to `main` branch
+     - Pull requests to `main` branch
+     - Weekly schedule (Fridays at 4:29 AM UTC)
+   - Check the **Actions** tab to confirm workflows are running successfully
+
+4. **Re-run Failed Workflow** (if needed)
+   - Go to **Actions** tab
+   - Find the failed CodeQL workflow run
+   - Click **Re-run jobs** → **Re-run failed jobs**
+
+### 📋 Verification Checklist
+
+- [ ] Default CodeQL setup is disabled in repository settings
+- [ ] Advanced CodeQL workflow exists at `.github/workflows/codeql.yml`
+- [ ] Latest workflow runs show success in the Actions tab
+- [ ] No "default setup enabled" errors in workflow logs
+
+### 📚 Additional Resources
+
+- **Troubleshooting Guide:** See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more issues
+- **Security Scanning Details:** See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for architecture
+- **GitHub Docs:** [CodeQL Code Scanning](https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql)
+
+---
+
 ## 🎛️ Configuration
 
 ### Trading Parameters
