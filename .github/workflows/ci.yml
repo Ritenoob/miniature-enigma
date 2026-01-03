@@ -1,3 +1,14 @@
+# CI Workflow for KuCoin Futures Dashboard
+#
+# This workflow runs tests on every push and pull request to ensure code quality.
+# It works independently of the security scanning workflows.
+#
+# Security Scanning Note:
+# - This repository uses CodeQL Advanced setup (see .github/workflows/codeql.yml)
+# - GitHub's default CodeQL setup must be DISABLED for advanced workflow to work
+# - See README.md "Security Scanning Setup" section for configuration instructions
+# - For troubleshooting, see docs/TROUBLESHOOTING.md
+#
 name: CI
 
 on:
