@@ -2,8 +2,11 @@
 // StopOrderStateMachine.js - State Machine for Stop Order Protection
 // ============================================================================
 
+const StopReplaceCoordinator = require('./StopReplaceCoordinator');
+
 /**
  * State Machine for managing stop order updates safely
+ * Now uses StopReplaceCoordinator for enhanced protection
  * 
  * States:
  * - PROTECTED: Position has an active stop order
@@ -19,6 +22,9 @@ class StopOrderStateMachine {
     this.broadcastLog = broadcastLog;
     this.broadcastAlert = broadcastAlert;
     
+    // Use StopReplaceCoordinator for safe replacements
+    this.coordinator = new StopReplaceCoordinator(api, broadcastLog, broadcastAlert);
+    
     this.state = 'PROTECTED';
     this.currentOrderId = null;
     this.pendingOrderId = null;
@@ -29,8 +35,7 @@ class StopOrderStateMachine {
   }
 
   /**
-   * Update stop order with safe state transitions
-   * Places new stop BEFORE canceling old one to prevent exposure
+   * Update stop order with safe state transitions using coordinator
    */
   async updateStop(newStopPrice, stopParams) {
     // If already updating, queue this request
@@ -43,51 +48,51 @@ class StopOrderStateMachine {
     this.state = 'UPDATING';
 
     try {
-      // Step 1: Place NEW stop order FIRST (before canceling old)
-      this.broadcastLog('info', `[${this.positionManager.symbol}] Placing new stop order at ${newStopPrice.toFixed(2)}`);
-      const newOrder = await this.api.placeStopOrder(stopParams);
+      this.broadcastLog('info', `[${this.positionManager.symbol}] Updating stop order to ${newStopPrice.toFixed(2)}`);
       
-      if (!newOrder.data || !newOrder.data.orderId) {
-        throw new Error('Failed to place new stop order');
-      }
+      // Set the current order ID in coordinator for cancel-replace flow
+      this.coordinator.currentOrderId = this.currentOrderId;
       
-      this.pendingOrderId = newOrder.data.orderId;
-      this.broadcastLog('success', `[${this.positionManager.symbol}] New stop order placed: ${this.pendingOrderId}`);
+      // Use coordinator for safe replacement
+      const result = await this.coordinator.replaceStopOrder(
+        this.positionManager.symbol, 
+        stopParams
+      );
 
-      // Step 2: Only cancel old order after new one is confirmed
-      if (this.currentOrderId) {
-        try {
-          await this.api.cancelStopOrder(this.currentOrderId);
-          this.broadcastLog('info', `[${this.positionManager.symbol}] Old stop order cancelled: ${this.currentOrderId}`);
-        } catch (cancelError) {
-          // Old order might already be filled or cancelled - this is acceptable
-          this.broadcastLog('warn', `[${this.positionManager.symbol}] Could not cancel old stop: ${cancelError.message}`);
+      if (result.success) {
+        // Update state machine with new order ID
+        this.currentOrderId = result.orderId;
+        this.pendingOrderId = null;
+        this.state = 'PROTECTED';
+        this.retryCount = 0;
+        this.isProcessing = false;
+
+        // Process queued updates if any
+        if (this.updateQueue.length > 0) {
+          const queued = this.updateQueue.shift();
+          setImmediate(() => this.updateStop(queued.newStopPrice, queued.stopParams));
         }
+
+        return { success: true, orderId: this.currentOrderId, state: this.state };
+      } else {
+        throw new Error(result.error || 'Stop order replacement failed');
       }
-
-      // Step 3: Transition to protected state
-      this.currentOrderId = this.pendingOrderId;
-      this.pendingOrderId = null;
-      this.state = 'PROTECTED';
-      this.retryCount = 0;
-      this.isProcessing = false;
-
-      // Process queued updates if any
-      if (this.updateQueue.length > 0) {
-        const queued = this.updateQueue.shift();
-        setImmediate(() => this.updateStop(queued.newStopPrice, queued.stopParams));
-      }
-
-      return { success: true, orderId: this.currentOrderId, state: this.state };
 
     } catch (error) {
       this.broadcastLog('error', `[${this.positionManager.symbol}] Stop update failed: ${error.message}`);
-      this.state = 'UNPROTECTED';
+      
+      // Coordinator handles retries and emergency close internally
+      // If we reach here, it means emergency close was executed or max retries exceeded
+      if (error.message.includes('emergency close executed')) {
+        this.state = 'CRITICAL';
+        this.broadcastAlert('critical', `⚠️ CRITICAL: ${this.positionManager.symbol} required emergency close. Position closed with market order.`);
+      } else {
+        this.state = 'UNPROTECTED';
+        // Don't trigger recovery here - coordinator already handled retries
+        // Recovery is only for backward compatibility or special cases
+      }
+      
       this.isProcessing = false;
-      
-      // Start recovery process
-      setImmediate(() => this.startRecovery(newStopPrice, stopParams));
-      
       throw error;
     }
   }
@@ -145,7 +150,8 @@ class StopOrderStateMachine {
       currentOrderId: this.currentOrderId,
       pendingOrderId: this.pendingOrderId,
       retryCount: this.retryCount,
-      queueLength: this.updateQueue.length
+      queueLength: this.updateQueue.length,
+      coordinatorState: this.coordinator.getState()
     };
   }
 
@@ -158,6 +164,11 @@ class StopOrderStateMachine {
       this.currentOrderId = savedState.currentOrderId || null;
       this.pendingOrderId = savedState.pendingOrderId || null;
       this.retryCount = savedState.retryCount || 0;
+      
+      // Restore coordinator state
+      if (savedState.coordinatorState && savedState.coordinatorState.currentOrderId) {
+        this.coordinator.currentOrderId = savedState.coordinatorState.currentOrderId;
+      }
     }
   }
 
