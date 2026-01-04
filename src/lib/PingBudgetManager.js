@@ -283,8 +283,16 @@ class PingBudgetManager extends EventEmitter {
       // Allow recovery check
       this.bucket.recover();
     }
-    
+
+    // Mark processing as complete for this run
     this.processing = false;
+
+    // If new requests arrived after the last loop iteration while processing
+    // was still true, ensure they are processed in a subsequent tick.
+    if (this.requestQueue.length > 0) {
+      // Use setImmediate to avoid deep synchronous recursion on large queues
+      setImmediate(() => this.processQueue());
+    }
   }
   
   /**
