@@ -8,7 +8,7 @@ const OrderValidator = require('./OrderValidator');
 const { ConfigSchema, validateConfig, validatePartialConfig, getSchemaDocumentation } = require('./ConfigSchema');
 const SecureLogger = require('./SecureLogger');
 const { TradingEventBus, getEventBus } = require('./EventBus');
-const SignalGenerator = require('./SignalGenerator');
+const { PingBudgetManager, AdaptiveTokenBucket, WS_CONFIG } = require('./PingBudgetManager');
 
 module.exports = {
   // Math utilities
@@ -31,6 +31,8 @@ module.exports = {
   TradingEventBus,
   getEventBus,
   
-  // Signal generation
-  SignalGenerator
+  // Rate limiting
+  PingBudgetManager,
+  AdaptiveTokenBucket,
+  WS_CONFIG
 };
