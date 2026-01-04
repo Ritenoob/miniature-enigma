@@ -54,11 +54,13 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.2** - a semi-automat
 │   │   ├── StopReplaceCoordinator.js # Stop replacement coordination
 │   │   └── index.js                # Module exports
 │   ├── marketdata/        # Market data providers
-│   │   └── OHLCProvider.js         # OHLC data provider
+│   │   ├── OHLCProvider.js         # OHLC data provider
+│   │   └── index.js                # Module exports
 │   └── optimizer/         # Optimization modules
 │       ├── ExecutionSimulator.js   # Trade execution simulator
 │       ├── LiveOptimizerController.js # Live optimization controller
-│       └── TrailingStopPolicy.js   # Trailing stop policies
+│       ├── TrailingStopPolicy.js   # Trailing stop policies
+│       └── index.js                # Module exports
 ├── research/              # Research and analysis tools
 │   ├── forward/          # Forward testing
 │   ├── lib/signals/      # Extended signal generators
