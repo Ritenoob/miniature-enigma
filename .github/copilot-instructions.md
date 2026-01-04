@@ -51,7 +51,8 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.2** - a semi-automat
 │   │   ├── SecureLogger.js         # Redacted logging utilities
 │   │   ├── EventBus.js             # Event bus for hot/cold paths
 │   │   ├── StopOrderStateMachine.js # Stop order state management
-│   │   └── StopReplaceCoordinator.js # Stop replacement coordination
+│   │   ├── StopReplaceCoordinator.js # Stop replacement coordination
+│   │   └── index.js                # Module exports
 │   ├── marketdata/        # Market data providers
 │   │   └── OHLCProvider.js         # OHLC data provider
 │   └── optimizer/         # Optimization modules
@@ -67,7 +68,15 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.2** - a semi-automat
 │   ├── tradeMath.property.test.js
 │   ├── configValidation.test.js
 │   ├── pingBudgetManager.test.js
-│   └── ... (more test files)
+│   ├── pingBudgetManager.property.test.js
+│   ├── signal-generator.test.js
+│   ├── signalWeights.test.js
+│   ├── stopStateMachine.test.js
+│   ├── stopReplaceCoordinator.test.js
+│   ├── trailing-stop-policy.test.js
+│   ├── execution-simulator.test.js
+│   ├── live-optimizer.test.js
+│   └── ohlc-provider.test.js
 └── docs/                 # Documentation
     ├── OPTIMIZER.md
     ├── SIGNAL_CONFIG.md
@@ -79,7 +88,7 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.2** - a semi-automat
 
 1. **Server (server.js)**
    - KuCoinFuturesAPI class: API communication with retry logic
-   - TradeMath utility object: V3.5 formula implementations (being migrated to DecimalMath)
+   - TradeMath utility object: v3.5.0 formula implementations (being migrated to DecimalMath)
    - MarketDataManager: Candle data and technical indicators
    - PositionManager: Position lifecycle and risk management
    - RetryQueueManager: Failed operation retry with exponential backoff
@@ -384,10 +393,16 @@ Signals range from -120 (Strong Sell) to +120 (Strong Buy):
      - `tradeMath.test.js`: Basic formula tests
      - `tradeMath.property.test.js`: Property-based tests with fast-check
      - `configValidation.test.js`: Config schema validation tests
-     - `pingBudgetManager.test.js`: Rate limit manager tests
+     - `pingBudgetManager.test.js`: Rate limit manager unit tests
+     - `pingBudgetManager.property.test.js`: Rate limit manager property-based tests
      - `signal-generator.test.js`: Signal generation tests
+     - `signalWeights.test.js`: Signal weight configuration tests
      - `stopStateMachine.test.js`: Stop order state machine tests
-     - And more...
+     - `stopReplaceCoordinator.test.js`: Stop replacement coordination tests
+     - `trailing-stop-policy.test.js`: Trailing stop policy tests
+     - `execution-simulator.test.js`: Trade execution simulator tests
+     - `live-optimizer.test.js`: Live optimization controller tests
+     - `ohlc-provider.test.js`: OHLC data provider tests
 
 2. **Run specific tests**: `npm run test:rate-limit`
    - Runs only rate limit manager tests
