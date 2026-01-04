@@ -230,7 +230,7 @@ describe('StopReplaceCoordinator', () => {
     let emergencyExecuted = false;
     
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async () => {
         throw new Error('Persistent API failure');
       },
       placeOrder: async (params) => {
