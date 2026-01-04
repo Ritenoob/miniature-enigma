@@ -211,7 +211,7 @@ function scoreDOM(dom, weights) {
  * @returns {Object} KDJ values
  */
 function calculateKDJ(prices, config) {
-  const { kPeriod = 9, dPeriod = 3, smooth = 3 } = config;
+  const { kPeriod = 9 } = config; // Note: other config fields (e.g. dPeriod, smooth) are ignored in this simplified implementation
   
   if (prices.length < kPeriod) {
     return null;
