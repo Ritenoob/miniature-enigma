@@ -3,10 +3,10 @@ process.env.RUN_INTERVALS = 'false';
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { validateConfig, validatePartialConfig, ConfigSchema } = require('../src/lib/ConfigSchema');
+const { validateConfig, validatePartialConfig, ConfigSchema: _ConfigSchema } = require('../src/lib/ConfigSchema');
 
 describe('ConfigSchema Validation', () => {
-  
+
   test('validates correct config', () => {
     const config = {
       TRADING: {
@@ -21,7 +21,7 @@ describe('ConfigSchema Validation', () => {
         RETRY_DELAY_MS: 1000
       }
     };
-    
+
     const validated = validateConfig(config);
     assert.strictEqual(validated.TRADING.INITIAL_SL_ROI, 0.5);
     assert.strictEqual(validated.TRADING.DEFAULT_LEVERAGE, 10);
@@ -34,9 +34,9 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     const validated = validateConfig(config);
-    
+
     // Check defaults are applied
     assert.strictEqual(validated.TRADING.INITIAL_TP_ROI, 2.0); // default
     assert.strictEqual(validated.TRADING.DEFAULT_LEVERAGE, 10); // default
@@ -53,7 +53,7 @@ describe('ConfigSchema Validation', () => {
         RETRY_ATTEMPTS: 3
       }
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be between/);
@@ -66,7 +66,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be between/);
@@ -79,7 +79,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be one of/);
@@ -92,7 +92,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be a boolean/);
@@ -105,7 +105,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     const validated = validateConfig(config);
     assert.strictEqual(validated.TRADING.ENABLE_PARTIAL_TP, true);
   });
@@ -117,7 +117,7 @@ describe('ConfigSchema Validation', () => {
         MAX_POSITIONS: 10
       }
     };
-    
+
     const validated = validatePartialConfig(updates);
     assert.strictEqual(validated.TRADING.DEFAULT_LEVERAGE, 20);
     assert.strictEqual(validated.TRADING.MAX_POSITIONS, 10);
@@ -129,7 +129,7 @@ describe('ConfigSchema Validation', () => {
         SOME_FIELD: 123
       }
     };
-    
+
     assert.throws(() => {
       validatePartialConfig(updates);
     }, /Unknown config section/);
@@ -141,7 +141,7 @@ describe('ConfigSchema Validation', () => {
         UNKNOWN_FIELD: 123
       }
     };
-    
+
     assert.throws(() => {
       validatePartialConfig(updates);
     }, /Unknown config field/);
@@ -155,7 +155,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     const validated = validateConfig(config);
     assert.strictEqual(validated.TRADING.MAKER_FEE, 0.0002);
     assert.strictEqual(validated.TRADING.TAKER_FEE, 0.0006);
@@ -168,7 +168,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be between/);
@@ -176,7 +176,7 @@ describe('ConfigSchema Validation', () => {
 
   test('validates all enum values are accepted', () => {
     const modes = ['staircase', 'atr', 'dynamic'];
-    
+
     for (const mode of modes) {
       const config = {
         TRADING: {
@@ -184,7 +184,7 @@ describe('ConfigSchema Validation', () => {
         },
         API: {}
       };
-      
+
       const validated = validateConfig(config);
       assert.strictEqual(validated.TRADING.TRAILING_MODE, mode);
     }
@@ -197,7 +197,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     const validated = validateConfig(config);
     assert.strictEqual(validated.TRADING.MAINTENANCE_MARGIN_PERCENT, 1.5);
   });
@@ -209,7 +209,7 @@ describe('ConfigSchema Validation', () => {
       },
       API: {}
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be between/);
@@ -222,7 +222,7 @@ describe('ConfigSchema Validation', () => {
         RETRY_ATTEMPTS: 20 // Max is 10
       }
     };
-    
+
     assert.throws(() => {
       validateConfig(config);
     }, /must be between/);
@@ -235,7 +235,7 @@ describe('ConfigSchema Validation', () => {
         REQUEST_TIMEOUT_MS: 30000
       }
     };
-    
+
     const validated = validateConfig(config);
     assert.strictEqual(validated.API.REQUEST_TIMEOUT_MS, 30000);
   });

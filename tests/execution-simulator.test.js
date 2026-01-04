@@ -35,10 +35,10 @@ describe('ExecutionSimulator', () => {
     // Verify calculations
     assert.strictEqual(result.marginUsed, 1000, 'Margin should be 10% of 10000');
     assert.strictEqual(result.effectiveNotional, 10000, 'Notional should be margin * leverage');
-    
+
     // Long entry with slippage should pay more
     assert.ok(result.entryFillPrice > mockParams.midPrice, 'Long entry should have slippage upward');
-    
+
     // Fee should be notional * taker fee
     assert.strictEqual(result.entryFee, 10000 * 0.0006, 'Entry fee should be notional * taker fee');
     assert.strictEqual(result.fillType, 'taker', 'Fill type should be taker');
@@ -61,7 +61,7 @@ describe('ExecutionSimulator', () => {
 
   test('marks position to market correctly', () => {
     const entry = ExecutionSimulator.simulateEntry(mockParams);
-    
+
     // Price moves up 5% from entry
     const currentPrice = entry.entryFillPrice * 1.05;
     const mtm = ExecutionSimulator.markToMarket(entry, currentPrice);
@@ -73,14 +73,14 @@ describe('ExecutionSimulator', () => {
 
     // For long position, price increase should be profitable
     assert.ok(mtm.unrealizedGrossPnl > 0, 'Gross PnL should be positive');
-    
+
     // Net PnL should be less than gross (fees deducted)
     assert.ok(mtm.unrealizedNetPnl < mtm.unrealizedGrossPnl, 'Net PnL should be less than gross');
   });
 
   test('simulates exit with realized PnL', () => {
     const entry = ExecutionSimulator.simulateEntry(mockParams);
-    
+
     // Exit at 2% profit
     const exitPrice = entry.entryFillPrice * 1.02;
     const exit = ExecutionSimulator.simulateExit(entry, exitPrice);
@@ -94,7 +94,7 @@ describe('ExecutionSimulator', () => {
 
     // Net PnL should account for fees
     assert.ok(exit.realizedNetPnl < exit.realizedGrossPnl, 'Net PnL should be less than gross');
-    
+
     // Total fees should be entry + exit
     assert.ok(exit.totalFees > 0, 'Total fees should be positive');
   });
@@ -136,7 +136,7 @@ describe('ExecutionSimulator', () => {
     const expectedFeeImpact = (0.0006 + 0.0006) * 10 * 100; // (entry + exit) * leverage * 100
     const expectedSlippageImpact = 0.02 * 2; // 2% slippage on entry and exit
     const totalPercent = (expectedFeeImpact + expectedSlippageImpact) / 100;
-    
+
     const expectedBreakEven = entry.entryFillPrice * (1 + totalPercent);
     assert.ok(Math.abs(breakEven - expectedBreakEven) < 1, 'Break-even calculation should be accurate');
   });
@@ -170,7 +170,7 @@ describe('ExecutionSimulator', () => {
 
   test('net PnL is always less than or equal to gross PnL', () => {
     const entry = ExecutionSimulator.simulateEntry(mockParams);
-    
+
     // Test with profitable position
     const profitPrice = entry.entryFillPrice * 1.1;
     const profitExit = ExecutionSimulator.simulateExit(entry, profitPrice);
@@ -187,7 +187,7 @@ describe('ExecutionSimulator', () => {
       ...mockParams,
       leverage: 5
     });
-    
+
     const highLevEntry = ExecutionSimulator.simulateEntry({
       ...mockParams,
       leverage: 20
@@ -196,14 +196,14 @@ describe('ExecutionSimulator', () => {
     // Same margin, different notional
     assert.strictEqual(lowLevEntry.marginUsed, highLevEntry.marginUsed, 'Margin should be same');
     assert.ok(highLevEntry.effectiveNotional > lowLevEntry.effectiveNotional, 'Higher leverage = higher notional');
-    
+
     // Higher leverage = higher fees
     assert.ok(highLevEntry.entryFee > lowLevEntry.entryFee, 'Higher leverage should have higher fees');
   });
 
   test('ROI scales with leverage correctly', () => {
     const entry = ExecutionSimulator.simulateEntry(mockParams);
-    
+
     // 1% price move
     const newPrice = entry.entryFillPrice * 1.01;
     const mtm = ExecutionSimulator.markToMarket(entry, newPrice);
@@ -236,10 +236,10 @@ describe('ExecutionSimulator', () => {
   test('includes funding fees in net PnL', () => {
     const entry = ExecutionSimulator.simulateEntry(mockParams);
     const exitPrice = entry.entryFillPrice * 1.02;
-    
+
     // Exit without funding fees
     const exitNoFunding = ExecutionSimulator.simulateExit(entry, exitPrice, 0.0006, 0.02, 0);
-    
+
     // Exit with funding fees
     const fundingFees = 5; // 5 USDT in funding
     const exitWithFunding = ExecutionSimulator.simulateExit(entry, exitPrice, 0.0006, 0.02, fundingFees);

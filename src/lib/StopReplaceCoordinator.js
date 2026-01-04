@@ -7,7 +7,7 @@ const OrderValidator = require('./OrderValidator');
 /**
  * Enhanced coordinator for safe stop order replacement
  * Implements cancel-then-place with retry policy and emergency protection
- * 
+ *
  * States:
  * - IDLE: No operation in progress
  * - CANCELING: Canceling old stop order
@@ -20,18 +20,18 @@ class StopReplaceCoordinator {
     this.api = api;
     this.broadcastLog = broadcastLog;
     this.broadcastAlert = broadcastAlert;
-    
+
     // State tracking
     this.state = 'IDLE';
     this.currentOrderId = null;
     this.pendingOrderId = null;
-    
+
     // Retry configuration with jittered exponential backoff
     this.maxRetries = 5;
     this.baseDelay = 1000; // 1 second
     this.maxDelay = 30000; // 30 seconds
     this.retryCount = 0;
-    
+
     // Operation queue for serialization
     this.operationQueue = [];
     this.isProcessing = false;
@@ -65,21 +65,21 @@ class StopReplaceCoordinator {
 
     this.isProcessing = true;
     this.state = 'IDLE';
-    
+
     try {
       const result = await this._executeReplacement(symbol, newStopParams);
       this.isProcessing = false;
-      
+
       // Process next queued operation
       this._processQueue();
-      
+
       return result;
     } catch (error) {
       this.isProcessing = false;
-      
+
       // Process next queued operation even on error
       this._processQueue();
-      
+
       throw error;
     }
   }
@@ -89,7 +89,7 @@ class StopReplaceCoordinator {
    */
   async _executeReplacement(symbol, newStopParams) {
     this.retryCount = 0;
-    
+
     // Validate and sanitize new stop order params
     const sanitizedParams = OrderValidator.sanitize(newStopParams, 'stop');
     OrderValidator.validateStopOrder(sanitizedParams);
@@ -101,7 +101,7 @@ class StopReplaceCoordinator {
         if (this.currentOrderId) {
           this.state = 'CANCELING';
           this.broadcastLog('info', `[${symbol}] Canceling old stop order: ${this.currentOrderId}`);
-          
+
           try {
             await this.api.cancelStopOrder(this.currentOrderId);
             this.broadcastLog('success', `[${symbol}] Old stop order canceled: ${this.currentOrderId}`);
@@ -114,9 +114,9 @@ class StopReplaceCoordinator {
         // Step 2: Place new stop order
         this.state = 'PLACING';
         this.broadcastLog('info', `[${symbol}] Placing new stop order at ${sanitizedParams.stopPrice}`);
-        
+
         const result = await this.api.placeStopOrder(sanitizedParams);
-        
+
         if (!result.data || !result.data.orderId) {
           throw new Error('API returned success but no orderId');
         }
@@ -127,9 +127,9 @@ class StopReplaceCoordinator {
         this.currentOrderId = this.pendingOrderId;
         this.pendingOrderId = null;
         this.retryCount = 0;
-        
+
         this.broadcastLog('success', `[${symbol}] Stop order placed successfully: ${this.currentOrderId}`);
-        
+
         return {
           success: true,
           orderId: this.currentOrderId,
@@ -139,13 +139,13 @@ class StopReplaceCoordinator {
       } catch (error) {
         this.state = 'ERROR';
         this.retryCount++;
-        
+
         const isRateLimited = error.message && (
-          error.message.includes('429') || 
+          error.message.includes('429') ||
           error.message.includes('rate limit') ||
           error.message.includes('Too Many Requests')
         );
-        
+
         this.broadcastLog('error', `[${symbol}] Stop order placement failed (attempt ${this.retryCount}/${this.maxRetries}): ${error.message}`);
 
         // If we've exhausted retries, trigger emergency close
@@ -157,9 +157,9 @@ class StopReplaceCoordinator {
 
         // Calculate backoff delay
         const backoffDelay = this.calculateBackoffDelay(this.retryCount - 1);
-        
+
         this.broadcastLog('info', `[${symbol}] Retrying in ${(backoffDelay / 1000).toFixed(1)}s... ${isRateLimited ? '(rate limited)' : ''}`);
-        
+
         await this.sleep(backoffDelay);
       }
     }
@@ -174,7 +174,7 @@ class StopReplaceCoordinator {
    */
   async emergencyClose(symbol, stopParams) {
     this.broadcastLog('warn', `[${symbol}] EMERGENCY CLOSE: Placing protective market order`);
-    
+
     try {
       // Build emergency market order with reduceOnly
       const emergencyParams = {
@@ -192,11 +192,11 @@ class StopReplaceCoordinator {
 
       // Place emergency market order
       const result = await this.api.placeOrder(sanitizedEmergency);
-      
+
       if (result.data && result.data.orderId) {
         this.broadcastAlert('emergency', `✓ Emergency market order placed for ${symbol}: ${result.data.orderId}`);
         this.broadcastLog('success', `[${symbol}] Emergency close executed: ${result.data.orderId}`);
-        
+
         return {
           success: true,
           orderId: result.data.orderId,
@@ -209,7 +209,7 @@ class StopReplaceCoordinator {
       const criticalMsg = `⚠️⚠️ CRITICAL: ${symbol} emergency close FAILED. Position unprotected! Manual intervention required immediately!`;
       this.broadcastAlert('critical', criticalMsg);
       this.broadcastLog('error', `[${symbol}] Emergency close failed: ${error.message}`);
-      
+
       throw new Error(`Emergency close failed: ${error.message}`);
     }
   }

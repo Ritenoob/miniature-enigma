@@ -13,20 +13,20 @@ class SecureLogger {
     /KC-API-SIGN['":\s]+['"]?([a-zA-Z0-9+/=]+)['"]?/gi,
     /KC-API-PASSPHRASE['":\s]+['"]?([a-zA-Z0-9+/=]+)['"]?/gi,
     /KC-API-TIMESTAMP['":\s]+['"]?([0-9]+)['"]?/gi,
-    
+
     // Generic API patterns
     /api[_-]?key['":\s]+['"]?([a-zA-Z0-9-]+)['"]?/gi,
     /api[_-]?secret['":\s]+['"]?([a-zA-Z0-9+/=-]+)['"]?/gi,
     /passphrase['":\s]+['"]?([a-zA-Z0-9-]+)['"]?/gi,
     /password['":\s]+['"]?([^\s'"]+)['"]?/gi,
     /token['":\s]+['"]?([a-zA-Z0-9-._]+)['"]?/gi,
-    
+
     // Authorization headers
     /authorization['":\s]+['"]?([^\s'"]+)['"]?/gi,
     /bearer\s+([a-zA-Z0-9-._]+)/gi,
-    
+
     // Private keys and secrets (common formats)
-    /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----[\s\S]+?-----END\s+(?:RSA\s+)?PRIVATE\s+KEY-----/gi,
+    /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----[\s\S]+?-----END\s+(?:RSA\s+)?PRIVATE\s+KEY-----/gi
   ];
 
   /**
@@ -36,7 +36,7 @@ class SecureLogger {
    */
   static redact(message) {
     let redacted = typeof message === 'object' ? JSON.stringify(message, null, 2) : String(message);
-    
+
     for (const pattern of this.REDACT_PATTERNS) {
       redacted = redacted.replace(pattern, (match, secret) => {
         // Keep first 4 and last 4 chars for debugging, redact middle
@@ -48,7 +48,7 @@ class SecureLogger {
         return match.replace(secret, '[REDACTED]');
       });
     }
-    
+
     return redacted;
   }
 
@@ -62,7 +62,7 @@ class SecureLogger {
     const safeMessage = this.redact(message);
     const timestamp = new Date().toISOString();
     const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${safeMessage}`;
-    
+
     // Output to console
     switch (level) {
       case 'error':
@@ -77,7 +77,7 @@ class SecureLogger {
       default:
         console.log(logEntry);
     }
-    
+
     // Log data if present
     if (data !== null && data !== undefined) {
       const safeData = this.redact(data);
@@ -127,7 +127,7 @@ class SecureLogger {
 
     for (const header of sensitiveHeaders) {
       const headerLower = header.toLowerCase();
-      
+
       // Check both original case and lowercase
       if (redacted[header]) {
         redacted[header] = '[REDACTED]';
@@ -149,7 +149,7 @@ class SecureLogger {
     const safe = {
       message: this.redact(error.message),
       name: error.name,
-      code: error.code,
+      code: error.code
     };
 
     // Include stack trace in development/debug

@@ -455,6 +455,54 @@ This software is for educational purposes. Cryptocurrency trading involves subst
    (Set `RUN_INTERVALS=false` in automation to skip background polling timers.)
 
 
+## 🔍 Code Quality
+
+This project uses ESLint to maintain code quality and consistency.
+
+### Running Linting Locally
+
+To check for linting issues:
+```bash
+npm run lint
+```
+
+To automatically fix linting issues:
+```bash
+npm run lint:fix
+```
+
+### Pre-commit Hooks
+
+The project uses Husky and lint-staged to automatically lint staged files before each commit. This ensures that only properly formatted and linted code is committed to the repository.
+
+When you run `git commit`, lint-staged will:
+1. Run ESLint on all staged JavaScript files
+2. Automatically fix any auto-fixable issues
+3. Stage the fixed files
+4. Complete the commit if all checks pass
+
+To bypass the pre-commit hook (not recommended):
+```bash
+git commit --no-verify
+```
+
+### ESLint Configuration
+
+The project uses ESLint v9 with the following configuration:
+- **Environment**: Node.js, ES2022
+- **Base Config**: `eslint:recommended`
+- **Key Rules**:
+  - Console statements allowed (trading bots need logging)
+  - Unused variables with `_` prefix are ignored
+  - Semicolons required
+  - Single quotes preferred
+  - 2-space indentation
+
+### CI Integration
+
+The CI pipeline runs linting checks on every push and pull request. The lint step runs after dependency installation and before tests to catch issues early.
+
+
 ## ✅ Release Notes (v3.5.1)
 - Added demo mode with synthetic market data and mock KuCoin client for safe local exploration.
 - Added automated tests for trading math formulas (`node --test`).

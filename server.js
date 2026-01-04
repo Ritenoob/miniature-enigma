@@ -1,7 +1,7 @@
 // ============================================================================
 // KuCoin Perpetual Futures Dashboard - Semi-Automated Trading System
 // Version: 3.5.2
-// 
+//
 // CHANGELOG FROM V3.5.1:
 // - **V3.5.2 ENHANCEMENTS:**
 // - Precision-safe financial math with decimal.js (eliminates floating-point errors)
@@ -11,7 +11,7 @@
 // - API key/secret redaction in logs for security
 // - Hot/cold path event architecture for latency-sensitive operations
 // - Property-based tests with fast-check for comprehensive edge case coverage
-// 
+//
 // - **Previous V3.5.1 features:**
 // - Fee-adjusted break-even calculation (accounts for maker/taker fees)
 // - Accurate liquidation price formula with maintenance margin
@@ -40,7 +40,7 @@ const { EventEmitter } = require('events');
 // ============================================================================
 const DecimalMath = require('./src/lib/DecimalMath');
 const { validateConfig } = require('./src/lib/ConfigSchema');
-const SecureLogger = require('./src/lib/SecureLogger');
+const _SecureLogger = require('./src/lib/SecureLogger');
 const OrderValidator = require('./src/lib/OrderValidator');
 const SignalGenerator = require('./src/lib/SignalGenerator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
@@ -51,41 +51,41 @@ const SignalGenerator = require('./src/lib/SignalGenerator');
 const CONFIG = {
   PORT: process.env.PORT || 3001,
   KUCOIN_FUTURES_API: 'https://api-futures.kucoin.com',
-  
+
   // Trading Parameters
   TRADING: {
     // Risk Management (ROI-based, not price-based)
     INITIAL_SL_ROI: 0.5,              // 0.5% ROI loss = stop loss
     INITIAL_TP_ROI: 2.0,              // 2.0% ROI gain = take profit
-    
+
     // Break-Even Settings
     BREAK_EVEN_BUFFER: 0.1,           // 0.1% buffer above fee-adjusted break-even
-    
+
     // Trailing Stop Settings
     TRAILING_STEP_PERCENT: 0.15,      // Trail every 0.15% ROI
     TRAILING_MOVE_PERCENT: 0.05,      // Move SL by 0.05% price per step
     TRAILING_MODE: 'staircase',       // 'staircase' | 'atr' | 'dynamic'
     ATR_TRAILING_MULTIPLIER: 1.5,     // For ATR-based trailing
-    
+
     // Position Sizing
     POSITION_SIZE_PERCENT: 0.5,       // 0.5% of account balance
     DEFAULT_LEVERAGE: 10,
     MAX_POSITIONS: 5,
-    
+
     // Slippage & Fees
     SLIPPAGE_BUFFER_PERCENT: 0.02,    // 0.02% slippage buffer on stops
     MAKER_FEE: 0.0002,                // 0.02% maker fee
     TAKER_FEE: 0.0006,                // 0.06% taker fee
-    
+
     // Liquidation Safety
     MAINTENANCE_MARGIN_PERCENT: 0.5,  // 0.5% maintenance margin
-    
+
     // Partial Take Profit (Scaling Out)
     ENABLE_PARTIAL_TP: false,         // Enable partial exits
     PARTIAL_TP_PERCENT: 50,           // Close 50% at TP1
     TP1_ROI: 1.0,                     // First TP at 1% ROI
     TP2_ROI: 2.0,                     // Second TP at 2% ROI
-    
+
     // Auto-Leverage Tiers (ATR % -> Max Leverage)
     AUTO_LEVERAGE_TIERS: [
       { maxVolatility: 0.5, leverage: 50 },
@@ -96,7 +96,7 @@ const CONFIG = {
       { maxVolatility: Infinity, leverage: 3 }
     ]
   },
-  
+
   // API Settings
   API: {
     RETRY_ATTEMPTS: 3,
@@ -104,10 +104,10 @@ const CONFIG = {
     RATE_LIMIT_DELAY_MS: 5000,
     REQUEST_TIMEOUT_MS: 10000
   },
-  
+
   // Default symbols
   DEFAULT_SYMBOLS: ['XBTUSDTM', 'ETHUSDTM', 'SOLUSDTM', 'BNBUSDTM', 'XRPUSDTM'],
-  
+
   // Timeframes (in minutes for KuCoin API)
   TIMEFRAMES: {
     '1min': 1,
@@ -118,7 +118,7 @@ const CONFIG = {
     '4hour': 240,
     '1day': 1440
   },
-  
+
   // Data file for position persistence
   POSITIONS_FILE: './positions.json',
   RETRY_QUEUE_FILE: './retry_queue.json'
@@ -195,7 +195,7 @@ const orderBooks = {};               // Symbol -> { bids: [], asks: [] }
 const fundingRates = {};             // Symbol -> { rate, nextFundingTime }
 const contractSpecs = {};            // Symbol -> { tickSize, lotSize, multiplier, maintMargin }
 const wsClients = new Set();         // Connected dashboard clients
-const positionMonitor = new EventEmitter();
+const _positionMonitor = new EventEmitter();
 
 let currentTimeframe = '5min';
 let accountBalance = 0;
@@ -224,15 +224,15 @@ const TradeMath = {
   calculateATRTrailingDistance: DecimalMath.calculateATRTrailingDistance.bind(DecimalMath),
   roundToTickSize: DecimalMath.roundToTickSize.bind(DecimalMath),
   roundToLotSize: DecimalMath.roundToLotSize.bind(DecimalMath),
-  
+
   /**
    * Calculate volatility-based recommended leverage
    * Uses ATR percentage to determine safe leverage tier
    */
   calculateAutoLeverage(atrPercent, riskMultiplier = 1.0) {
     return DecimalMath.calculateAutoLeverage(
-      atrPercent, 
-      riskMultiplier, 
+      atrPercent,
+      riskMultiplier,
       CONFIG.TRADING.AUTO_LEVERAGE_TIERS
     );
   }
@@ -307,9 +307,9 @@ class KuCoinFuturesAPI {
       return response.data;
 
     } catch (error) {
-      const isRateLimit = error.message.includes('Rate limit') || 
+      const isRateLimit = error.message.includes('Rate limit') ||
                           error.response?.status === 429;
-      const isRetryable = isRateLimit || 
+      const isRetryable = isRateLimit ||
                           error.code === 'ECONNABORTED' ||
                           error.code === 'ETIMEDOUT' ||
                           error.response?.status >= 500;
@@ -524,7 +524,7 @@ class MockKuCoinFuturesAPI {
     return { code: '200000', data: candles };
   }
 
-  async getFundingRate(symbol) {
+  async getFundingRate(_symbol) {
     return { code: '200000', data: { value: '0.0001', predictedValue: '0.0002' } };
   }
 
@@ -647,12 +647,12 @@ class RetryQueueManager {
         this.queue.shift();
         this.save();
         broadcastLog('success', `[RETRY] Completed: ${item.operation.type}`);
-      } catch (error) {
+      } catch (_error) {
         if (item.attempts >= CONFIG.API.RETRY_ATTEMPTS) {
           this.queue.shift();
           this.save();
           broadcastLog('error', `[RETRY] Failed after ${item.attempts} attempts: ${item.operation.type}`);
-          
+
           // Critical failure handling for stop orders
           if (item.operation.type === 'update_stop_loss') {
             await this.handleCriticalStopFailure(item.operation);
@@ -687,7 +687,7 @@ class RetryQueueManager {
     if (op.existingOrderId) {
       try {
         await kucoinAPI.cancelStopOrder(op.existingOrderId);
-      } catch (e) {
+      } catch (_e) {
         // Order might already be cancelled
       }
     }
@@ -698,7 +698,7 @@ class RetryQueueManager {
   async handleCriticalStopFailure(op) {
     broadcastLog('error', `[CRITICAL] Stop loss update failed for ${op.symbol}. Position may be unprotected!`);
     broadcastAlert('error', `CRITICAL: ${op.symbol} stop loss failed. Consider manual intervention.`);
-    
+
     // Notify the position manager
     const position = activePositions.get(op.symbol);
     if (position) {
@@ -724,7 +724,7 @@ class TechnicalIndicators {
     const multiplier = 2 / (period + 1);
     let ema = this.calculateSMA(data.slice(0, period), period);
     if (ema === null) return null;
-    
+
     for (let i = period; i < data.length; i++) {
       ema = (data[i] - ema) * multiplier + ema;
     }
@@ -733,19 +733,19 @@ class TechnicalIndicators {
 
   static calculateRSI(data, period = 14) {
     if (!data || data.length < period + 1) return 50;
-    
+
     let gains = 0;
     let losses = 0;
-    
+
     for (let i = data.length - period; i < data.length; i++) {
       const change = data[i] - data[i - 1];
       if (change > 0) gains += change;
       else losses += Math.abs(change);
     }
-    
+
     const avgGain = gains / period;
     const avgLoss = losses / period;
-    
+
     if (avgLoss === 0) return 100;
     const rs = avgGain / avgLoss;
     return 100 - (100 / (1 + rs));
@@ -753,21 +753,21 @@ class TechnicalIndicators {
 
   static calculateWilliamsR(highs, lows, closes, period = 14) {
     if (!closes || closes.length < period) return -50;
-    
+
     const recentHighs = highs.slice(-period);
     const recentLows = lows.slice(-period);
     const currentClose = closes[closes.length - 1];
-    
+
     const highestHigh = Math.max(...recentHighs);
     const lowestLow = Math.min(...recentLows);
-    
+
     if (highestHigh === lowestLow) return -50;
     return ((highestHigh - currentClose) / (highestHigh - lowestLow)) * -100;
   }
 
   static calculateATR(highs, lows, closes, period = 14) {
     if (!closes || closes.length < period + 1) return 0;
-    
+
     const trueRanges = [];
     for (let i = 1; i < closes.length; i++) {
       const tr = Math.max(
@@ -777,32 +777,32 @@ class TechnicalIndicators {
       );
       trueRanges.push(tr);
     }
-    
+
     return this.calculateSMA(trueRanges.slice(-period), period) || 0;
   }
 
-  static calculateMACD(data, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+  static calculateMACD(data, fastPeriod = 12, slowPeriod = 26, _signalPeriod = 9) {
     if (!data || data.length < slowPeriod) return { macd: 0, signal: 0, histogram: 0 };
-    
+
     const fastEMA = this.calculateEMA(data, fastPeriod);
     const slowEMA = this.calculateEMA(data, slowPeriod);
-    
+
     if (fastEMA === null || slowEMA === null) return { macd: 0, signal: 0, histogram: 0 };
-    
+
     const macd = fastEMA - slowEMA;
     const signal = macd * 0.85;
     const histogram = macd - signal;
-    
+
     return { macd, signal, histogram };
   }
 
   static calculateAO(highs, lows, shortPeriod = 5, longPeriod = 34) {
     if (!highs || highs.length < longPeriod) return 0;
-    
+
     const medianPrices = highs.map((high, i) => (high + lows[i]) / 2);
     const shortSMA = this.calculateSMA(medianPrices.slice(-shortPeriod), shortPeriod);
     const longSMA = this.calculateSMA(medianPrices.slice(-longPeriod), longPeriod);
-    
+
     if (shortSMA === null || longSMA === null) return 0;
     return shortSMA - longSMA;
   }
@@ -812,12 +812,12 @@ class TechnicalIndicators {
       const lastPrice = data && data.length > 0 ? data[data.length - 1] : 0;
       return { upper: lastPrice, middle: lastPrice, lower: lastPrice };
     }
-    
+
     const slice = data.slice(-period);
     const sma = slice.reduce((sum, val) => sum + val, 0) / period;
     const variance = slice.reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / period;
     const std = Math.sqrt(variance);
-    
+
     return {
       upper: sma + (stdDev * std),
       middle: sma,
@@ -825,21 +825,21 @@ class TechnicalIndicators {
     };
   }
 
-  static calculateStochastic(highs, lows, closes, period = 14, smoothK = 3, smoothD = 3) {
+  static calculateStochastic(highs, lows, closes, period = 14, _smoothK = 3, _smoothD = 3) {
     if (!closes || closes.length < period) return { k: 50, d: 50 };
-    
+
     const recentHighs = highs.slice(-period);
     const recentLows = lows.slice(-period);
     const currentClose = closes[closes.length - 1];
-    
+
     const highestHigh = Math.max(...recentHighs);
     const lowestLow = Math.min(...recentLows);
-    
+
     if (highestHigh === lowestLow) return { k: 50, d: 50 };
-    
+
     const k = ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
     const d = k * 0.8;
-    
+
     return { k, d };
   }
 
@@ -886,7 +886,7 @@ class MarketDataManager {
 
   loadCandles(klineData) {
     if (!klineData || !Array.isArray(klineData)) return;
-    
+
     this.candles = klineData.map(k => ({
       timestamp: k[0],
       open: parseFloat(k[1]),
@@ -895,7 +895,7 @@ class MarketDataManager {
       close: parseFloat(k[4]),
       volume: parseFloat(k[5])
     })).sort((a, b) => a.timestamp - b.timestamp);
-    
+
     if (this.candles.length > 0) {
       this.currentPrice = this.candles[this.candles.length - 1].close;
     }
@@ -998,36 +998,36 @@ class PositionManager {
     this.leverage = positionData.leverage || CONFIG.TRADING.DEFAULT_LEVERAGE;
     this.entryPrice = positionData.entryPrice;
     this.currentPrice = positionData.currentPrice || positionData.entryPrice;
-    
+
     // V3.5: Enhanced position tracking
     this.positionValueUSD = positionData.positionValueUSD || (this.size * this.entryPrice * (contractSpecs[this.symbol]?.multiplier || 1));
     this.marginUsed = positionData.marginUsed || (this.positionValueUSD / this.leverage);
-    
+
     // V3.5: Fee tracking
     this.entryFee = positionData.entryFee || CONFIG.TRADING.TAKER_FEE;
     this.exitFee = positionData.exitFee || CONFIG.TRADING.TAKER_FEE;
     this.accumulatedFundingFees = positionData.accumulatedFundingFees || 0;
     this.totalFeesEstimate = positionData.totalFeesEstimate || 0;
-    
+
     // Order IDs
     this.entryOrderId = positionData.entryOrderId || null;
     this.slOrderId = positionData.slOrderId || null;
     this.tpOrderId = positionData.tpOrderId || null;
     this.tp1OrderId = positionData.tp1OrderId || null; // For partial TP
-    
+
     // Stop Loss & Take Profit
     this.initialSL = positionData.initialSL;
     this.currentSL = positionData.currentSL || positionData.initialSL;
     this.takeProfit = positionData.takeProfit;
     this.tp1Price = positionData.tp1Price || null; // First partial TP
-    
+
     // V3.5: Liquidation price
     this.liquidationPrice = positionData.liquidationPrice || this.calculateLiquidationPrice();
-    
+
     // V3.5: Fee-adjusted break-even threshold
-    this.feeAdjustedBreakEvenROI = positionData.feeAdjustedBreakEvenROI || 
+    this.feeAdjustedBreakEvenROI = positionData.feeAdjustedBreakEvenROI ||
       TradeMath.calculateFeeAdjustedBreakEven(this.entryFee, this.exitFee, this.leverage, CONFIG.TRADING.BREAK_EVEN_BUFFER);
-    
+
     // State tracking
     this.breakEvenTriggered = positionData.breakEvenTriggered || false;
     this.lastTrailingLevel = positionData.lastTrailingLevel || 0;
@@ -1035,18 +1035,18 @@ class PositionManager {
     this.unrealizedPnl = 0;
     this.unrealizedPnlPercent = 0;
     this.netPnlEstimate = 0; // After fees
-    
+
     // V3.5: Partial TP tracking
     this.partialTPTriggered = positionData.partialTPTriggered || false;
     this.remainingSize = positionData.remainingSize || this.size;
-    
+
     // V3.5: Safety flags
     this.stopOrderFailed = positionData.stopOrderFailed || false;
-    
+
     // Timestamps
     this.openedAt = positionData.openedAt || Date.now();
     this.updatedAt = Date.now();
-    
+
     // Status: 'pending', 'open', 'closing', 'closed'
     this.status = positionData.status || 'pending';
   }
@@ -1065,20 +1065,20 @@ class PositionManager {
     // ========================================================================
     const priceDiff = TradeMath.calculatePriceDiff(this.side, this.entryPrice, currentPrice);
     const contractMultiplier = contractSpecs[this.symbol]?.multiplier || 1;
-    
+
     // Gross unrealized P&L
     this.unrealizedPnl = TradeMath.calculateUnrealizedPnl(priceDiff, this.remainingSize, contractMultiplier);
-    
+
     // Leveraged P&L % (ROI on margin)
     this.unrealizedPnlPercent = TradeMath.calculateLeveragedPnlPercent(this.unrealizedPnl, this.marginUsed);
-    
+
     // V3.5: Estimate net P&L after fees
     this.totalFeesEstimate = TradeMath.calculateTotalFees(
-      this.positionValueUSD, 
-      this.entryFee, 
+      this.positionValueUSD,
+      this.entryFee,
       this.exitFee
     ) + this.accumulatedFundingFees;
-    
+
     this.netPnlEstimate = this.unrealizedPnl - this.totalFeesEstimate;
 
     // Only manage SL/TP if position is open
@@ -1122,7 +1122,7 @@ class PositionManager {
       const tp1Hit = this.side === 'long'
         ? currentPrice >= this.tp1Price
         : currentPrice <= this.tp1Price;
-      
+
       if (tp1Hit) {
         await this.executePartialTakeProfit();
       }
@@ -1133,14 +1133,14 @@ class PositionManager {
 
   async moveToBreakEven() {
     broadcastLog('info', `[${this.symbol}] Moving SL to break-even at entry: ${this.entryPrice.toFixed(2)} (Fee-adjusted ROI threshold: ${this.feeAdjustedBreakEvenROI.toFixed(2)}%)`);
-    
+
     this.currentSL = this.entryPrice;
     this.breakEvenTriggered = true;
     this.lastTrailingLevel = this.unrealizedPnlPercent;
-    
+
     // Update SL order on KuCoin
     await this.updateStopLossOrder();
-    
+
     broadcastAlert('breakeven', `${this.symbol} ${this.side.toUpperCase()} moved to break-even! (ROI: ${this.unrealizedPnlPercent.toFixed(2)}%)`);
     savePositions();
   }
@@ -1150,7 +1150,7 @@ class PositionManager {
    */
   async executeTrailingStop() {
     const trailingMode = CONFIG.TRADING.TRAILING_MODE;
-    
+
     switch (trailingMode) {
       case 'staircase':
         await this.staircaseTrailing();
@@ -1173,7 +1173,7 @@ class PositionManager {
   async staircaseTrailing() {
     const stepPercent = CONFIG.TRADING.TRAILING_STEP_PERCENT;
     const movePercent = CONFIG.TRADING.TRAILING_MOVE_PERCENT;
-    
+
     const steps = TradeMath.calculateTrailingSteps(
       this.unrealizedPnlPercent,
       this.lastTrailingLevel,
@@ -1182,19 +1182,19 @@ class PositionManager {
 
     if (steps > 0) {
       const newSL = TradeMath.calculateTrailedStopLoss(this.side, this.currentSL, steps, movePercent);
-      
+
       // Only move SL in favorable direction
       const shouldMove = this.side === 'long' ? newSL > this.currentSL : newSL < this.currentSL;
 
       if (shouldMove) {
         broadcastLog('info', `[${this.symbol}] Trailing SL: ${this.currentSL.toFixed(2)} → ${newSL.toFixed(2)} (${steps} steps, ROI: ${this.unrealizedPnlPercent.toFixed(2)}%)`);
-        
+
         this.currentSL = newSL;
         this.lastTrailingLevel = this.unrealizedPnlPercent;
         this.trailingStepsCompleted += steps;
-        
+
         await this.updateStopLossOrder();
-        
+
         broadcastAlert('trailing', `${this.symbol} SL trailed to ${newSL.toFixed(2)}`);
         savePositions();
       }
@@ -1208,11 +1208,11 @@ class PositionManager {
   async atrBasedTrailing() {
     const manager = marketManagers[this.symbol];
     if (!manager) return;
-    
+
     const indicators = manager.getIndicators();
     const atr = indicators.atr;
     const trailingDistance = TradeMath.calculateATRTrailingDistance(atr, CONFIG.TRADING.ATR_TRAILING_MULTIPLIER);
-    
+
     let newSL;
     if (this.side === 'long') {
       newSL = this.currentPrice - trailingDistance;
@@ -1223,12 +1223,12 @@ class PositionManager {
       // Only move down
       if (newSL >= this.currentSL) return;
     }
-    
+
     broadcastLog('info', `[${this.symbol}] ATR Trailing: ${this.currentSL.toFixed(2)} → ${newSL.toFixed(2)} (ATR: ${atr.toFixed(2)})`);
-    
+
     this.currentSL = newSL;
     this.lastTrailingLevel = this.unrealizedPnlPercent;
-    
+
     await this.updateStopLossOrder();
     savePositions();
   }
@@ -1238,7 +1238,7 @@ class PositionManager {
    */
   async dynamicTrailing() {
     let stepPercent, movePercent;
-    
+
     if (this.unrealizedPnlPercent < 5) {
       stepPercent = 0.10;
       movePercent = 0.03;
@@ -1249,7 +1249,7 @@ class PositionManager {
       stepPercent = 0.25;
       movePercent = 0.10;
     }
-    
+
     const steps = TradeMath.calculateTrailingSteps(
       this.unrealizedPnlPercent,
       this.lastTrailingLevel,
@@ -1262,10 +1262,10 @@ class PositionManager {
 
       if (shouldMove) {
         broadcastLog('info', `[${this.symbol}] Dynamic Trailing: ${this.currentSL.toFixed(2)} → ${newSL.toFixed(2)} (ROI: ${this.unrealizedPnlPercent.toFixed(2)}%)`);
-        
+
         this.currentSL = newSL;
         this.lastTrailingLevel = this.unrealizedPnlPercent;
-        
+
         await this.updateStopLossOrder();
         savePositions();
       }
@@ -1278,14 +1278,14 @@ class PositionManager {
   async updateStopLossOrder() {
     try {
       const specs = contractSpecs[this.symbol] || { tickSize: 0.1 };
-      
+
       // V3.5: Apply slippage buffer
       const slippageAdjustedSL = TradeMath.calculateSlippageAdjustedStop(
         this.side,
         this.currentSL,
         CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT
       );
-      
+
       const roundedSL = TradeMath.roundToTickSize(slippageAdjustedSL, specs.tickSize);
 
       // Cancel existing SL order
@@ -1293,7 +1293,7 @@ class PositionManager {
       if (oldOrderId) {
         try {
           await this.api.cancelStopOrder(oldOrderId);
-        } catch (e) {
+        } catch (_e) {
           // Order might already be cancelled or filled
         }
       }
@@ -1311,7 +1311,7 @@ class PositionManager {
         size: this.remainingSize.toString(),
         reduceOnly: true
       };
-      
+
       // V3.5.2: Validate and sanitize order
       OrderValidator.validateStopOrder(slParams);
       slParams = OrderValidator.sanitize(slParams, 'stop');
@@ -1324,7 +1324,7 @@ class PositionManager {
       }
     } catch (error) {
       broadcastLog('error', `[${this.symbol}] Failed to update SL order: ${error.message}`);
-      
+
       // V3.5: Add to retry queue
       retryQueueManager.add({
         type: 'update_stop_loss',
@@ -1350,12 +1350,12 @@ class PositionManager {
    */
   async executePartialTakeProfit() {
     if (this.partialTPTriggered) return;
-    
+
     const closeSize = Math.floor(this.size * (CONFIG.TRADING.PARTIAL_TP_PERCENT / 100));
     if (closeSize < 1) return;
-    
+
     broadcastLog('info', `[${this.symbol}] Executing partial TP: Closing ${closeSize} of ${this.size} lots at ${this.currentPrice.toFixed(2)}`);
-    
+
     try {
       const closeSide = this.side === 'long' ? 'sell' : 'buy';
       let closeParams = {
@@ -1366,24 +1366,24 @@ class PositionManager {
         size: closeSize.toString(),
         reduceOnly: true
       };
-      
+
       // V3.5.2: Validate and sanitize exit order
       OrderValidator.validateExitOrder(closeParams);
       closeParams = OrderValidator.sanitize(closeParams, 'exit');
 
       const result = await this.api.placeOrder(closeParams);
-      
+
       if (result.data) {
         this.partialTPTriggered = true;
         this.remainingSize -= closeSize;
-        
+
         // Move stop to break-even on remaining position
         if (!this.breakEvenTriggered) {
           this.currentSL = this.entryPrice;
           this.breakEvenTriggered = true;
           await this.updateStopLossOrder();
         }
-        
+
         broadcastLog('success', `[${this.symbol}] Partial TP executed. Remaining: ${this.remainingSize} lots`);
         broadcastAlert('partial_tp', `${this.symbol} TP1 hit: Closed ${closeSize} lots`);
         savePositions();
@@ -1395,7 +1395,7 @@ class PositionManager {
 
   async closePosition(reason) {
     if (this.status === 'closing' || this.status === 'closed') return;
-    
+
     this.status = 'closing';
     broadcastLog('info', `[${this.symbol}] Closing position: ${reason}`);
 
@@ -1403,7 +1403,7 @@ class PositionManager {
       // Cancel all pending orders for this symbol
       try {
         await this.api.cancelAllStopOrders(this.symbol);
-      } catch (e) {}
+      } catch (_e) {}
 
       // Place market order to close
       const closeSide = this.side === 'long' ? 'sell' : 'buy';
@@ -1415,16 +1415,16 @@ class PositionManager {
         size: this.remainingSize.toString(),
         reduceOnly: true
       };
-      
+
       // V3.5.2: Validate and sanitize exit order
       OrderValidator.validateExitOrder(closeParams);
       closeParams = OrderValidator.sanitize(closeParams, 'exit');
 
       const result = await this.api.placeOrder(closeParams);
-      
+
       if (result.data) {
         this.status = 'closed';
-        
+
         // Calculate final P&L with fees
         const finalNetPnl = TradeMath.calculateNetPnl(
           this.unrealizedPnl,
@@ -1433,14 +1433,14 @@ class PositionManager {
           this.exitFee,
           this.accumulatedFundingFees
         );
-        
+
         broadcastLog('success', `[${this.symbol}] Position closed.`);
         broadcastLog('success', `  Gross P&L: ${this.unrealizedPnl >= 0 ? '+' : ''}${this.unrealizedPnl.toFixed(2)} USDT (${this.unrealizedPnlPercent.toFixed(2)}% ROI)`);
         broadcastLog('success', `  Fees: ${this.totalFeesEstimate.toFixed(2)} USDT`);
         broadcastLog('success', `  Net P&L: ${finalNetPnl >= 0 ? '+' : ''}${finalNetPnl.toFixed(2)} USDT`);
-        
+
         broadcastAlert('close', `${this.symbol} closed: ${finalNetPnl >= 0 ? '+' : ''}${finalNetPnl.toFixed(2)} USDT (net)`);
-        
+
         // Remove from active positions
         activePositions.delete(this.symbol);
         savePositions();
@@ -1550,15 +1550,15 @@ function broadcastAlert(alertType, message) {
 
 function broadcastMarketData(symbol) {
   if (!marketManagers[symbol]) return;
-  
+
   const manager = marketManagers[symbol];
   const indicators = manager.getIndicators();
   const signal = manager.generateSignal();
   const marketData = manager.getMarketData();
-  
+
   // V3.5: Include recommended leverage
   const recommendedLeverage = manager.getRecommendedLeverage(1.0);
-  
+
   broadcast({
     type: 'market_update',
     symbol,
@@ -1581,7 +1581,7 @@ function broadcastMarketData(symbol) {
 
 function broadcastPositions() {
   const positions = [];
-  for (const [symbol, manager] of activePositions.entries()) {
+  for (const [_symbol, manager] of activePositions.entries()) {
     positions.push(manager.toJSON());
   }
   broadcast({ type: 'positions', data: positions });
@@ -1608,7 +1608,7 @@ function broadcastInitialState(ws) {
   });
 
   const positions = [];
-  for (const [symbol, manager] of activePositions.entries()) {
+  for (const [_symbol, manager] of activePositions.entries()) {
     positions.push(manager.toJSON());
   }
 
@@ -1663,9 +1663,9 @@ async function fetchKlines(symbol, timeframe = currentTimeframe) {
     const granularity = CONFIG.TIMEFRAMES[timeframe] || 5;
     const to = Date.now();
     const from = to - (granularity * 500 * 60 * 1000);
-    
+
     const response = await kucoinAPI.getKlines(symbol, granularity, from, to);
-    
+
     if (response.data && response.data.length > 0) {
       if (!marketManagers[symbol]) {
         marketManagers[symbol] = new MarketDataManager(symbol);
@@ -1724,7 +1724,7 @@ async function fetchFundingRate(symbol) {
       };
       return fundingRates[symbol];
     }
-  } catch (error) {
+  } catch (_error) {
     // Funding rate might not be available for all contracts
   }
   return null;
@@ -1745,20 +1745,20 @@ async function fetchAccountBalance() {
 
 async function initializeSymbol(symbol) {
   broadcastLog('info', `Initializing ${symbol}...`);
-  
+
   if (!marketManagers[symbol]) {
     marketManagers[symbol] = new MarketDataManager(symbol);
   }
-  
+
   await fetchContractSpecs(symbol);
   const candleCount = await fetchKlines(symbol);
   await fetchTicker(symbol);
   await fetchOrderBook(symbol);
   await fetchFundingRate(symbol);
-  
+
   broadcastLog('success', `${symbol}: Loaded ${candleCount} candles`);
   broadcastMarketData(symbol);
-  
+
   broadcastSymbolList();
 }
 
@@ -1772,12 +1772,12 @@ function broadcastSymbolList() {
 
 async function initializeAllSymbols() {
   broadcastLog('info', 'Initializing market data...');
-  
+
   for (const symbol of CONFIG.DEFAULT_SYMBOLS) {
     await initializeSymbol(symbol);
     await sleep(200);
   }
-  
+
   broadcastLog('success', 'All symbols initialized');
 }
 
@@ -1829,24 +1829,24 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
   // ========================================================================
   const marginUsed = TradeMath.calculateMarginUsed(accountBalance, positionSizePercent);
   const positionValueUSD = TradeMath.calculatePositionValue(marginUsed, leverage);
-  
+
   // Calculate estimated fees
   const entryFee = CONFIG.TRADING.TAKER_FEE;
   const exitFee = CONFIG.TRADING.TAKER_FEE;
   const estimatedTotalFees = TradeMath.calculateTotalFees(positionValueUSD, entryFee, exitFee);
-  
+
   // Contract size
   const contractValue = entryPrice * specs.multiplier;
   let size = TradeMath.calculateLotSize(positionValueUSD, entryPrice, specs.multiplier);
-  
+
   // Round to lot size
   const lotSize = specs.lotSize || 1;
   size = TradeMath.roundToLotSize(size, lotSize);
-  
+
   // Calculate actual values after rounding
   const actualPositionValueUSD = size * contractValue;
   const actualMarginUsed = actualPositionValueUSD / leverage;
-  
+
   if (size < lotSize) {
     broadcastLog('error', `Position size too small. Calculated: ${size} lots`);
     broadcastLog('error', `Margin: $${marginUsed.toFixed(2)} → Position Value: $${positionValueUSD.toFixed(2)} @ ${leverage}x`);
@@ -1858,17 +1858,17 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
   // ========================================================================
   const slROI = CONFIG.TRADING.INITIAL_SL_ROI;
   const tpROI = CONFIG.TRADING.INITIAL_TP_ROI;
-  
+
   const stopLoss = TradeMath.calculateStopLossPrice(side, entryPrice, slROI, leverage);
   const takeProfit = TradeMath.calculateTakeProfitPrice(side, entryPrice, tpROI, leverage);
-  
+
   // V3.5: Calculate liquidation price
   const maintMargin = specs.maintMargin || CONFIG.TRADING.MAINTENANCE_MARGIN_PERCENT;
   const liquidationPrice = TradeMath.calculateLiquidationPrice(side, entryPrice, leverage, maintMargin);
-  
+
   // V3.5: Calculate fee-adjusted break-even threshold
   const feeAdjustedBreakEven = TradeMath.calculateFeeAdjustedBreakEven(entryFee, exitFee, leverage, CONFIG.TRADING.BREAK_EVEN_BUFFER);
-  
+
   // V3.5: Calculate partial TP price if enabled
   let tp1Price = null;
   if (CONFIG.TRADING.ENABLE_PARTIAL_TP) {
@@ -1907,9 +1907,9 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
     };
 
     broadcastLog('info', `  Order params: ${JSON.stringify(entryParams)}`);
-    
+
     const entryResult = await kucoinAPI.placeOrder(entryParams);
-    
+
     if (!entryResult.data || !entryResult.data.orderId) {
       throw new Error('No order ID returned from KuCoin');
     }
@@ -1920,7 +1920,7 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
     // V3.5.2: Place SL order with slippage buffer and validation
     const slippageAdjustedSL = TradeMath.calculateSlippageAdjustedStop(side, roundedSL, CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT);
     const finalSL = TradeMath.roundToTickSize(slippageAdjustedSL, tickSize);
-    
+
     const slSide = side === 'long' ? 'sell' : 'buy';
     let slParams = {
       clientOid: `sl_${symbol}_${Date.now()}`,
@@ -1933,7 +1933,7 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       size: size.toString(),
       reduceOnly: true
     };
-    
+
     // V3.5.2: Validate and sanitize stop order
     OrderValidator.validateStopOrder(slParams);
     slParams = OrderValidator.sanitize(slParams, 'stop');
@@ -1967,7 +1967,7 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
       reduceOnly: true,
       timeInForce: 'GTC'
     };
-    
+
     // V3.5.2: Validate and sanitize exit order
     OrderValidator.validateExitOrder(tpParams);
     tpParams = OrderValidator.sanitize(tpParams, 'exit');
@@ -2117,8 +2117,8 @@ wss.on('connection', async (ws) => {
             try {
               SignalGenerator.setProfile(data.profile);
               broadcastLog('info', `Signal profile changed to: ${data.profile}`);
-              broadcast({ 
-                type: 'signal_profile_changed', 
+              broadcast({
+                type: 'signal_profile_changed',
                 profile: data.profile,
                 config: SignalGenerator.getActiveProfile()
               });
@@ -2184,10 +2184,10 @@ app.get('/api/market/:symbol', (req, res) => {
   if (!marketManagers[symbol]) {
     return res.status(404).json({ error: 'Symbol not found' });
   }
-  
+
   const manager = marketManagers[symbol];
   const indicators = manager.getIndicators();
-  
+
   res.json({
     marketData: manager.getMarketData(),
     indicators,
@@ -2201,7 +2201,7 @@ app.get('/api/market/:symbol', (req, res) => {
 
 app.get('/api/positions', (req, res) => {
   const positions = [];
-  for (const [symbol, manager] of activePositions.entries()) {
+  for (const [_symbol, manager] of activePositions.entries()) {
     positions.push(manager.toJSON());
   }
   res.json(positions);
@@ -2239,11 +2239,11 @@ app.get('/api/signal/config', (req, res) => {
 
 app.post('/api/signal/config', (req, res) => {
   const { profile } = req.body;
-  
+
   if (!profile) {
     return res.status(400).json({ error: 'Profile name required' });
   }
-  
+
   try {
     SignalGenerator.setProfile(profile);
     broadcastLog('info', `Signal profile switched to: ${profile}`);
@@ -2258,12 +2258,12 @@ app.post('/api/symbols/add', async (req, res) => {
   if (!symbol) {
     return res.status(400).json({ error: 'Symbol required' });
   }
-  
+
   const sym = symbol.toUpperCase();
   if (marketManagers[sym]) {
     return res.json({ success: true, message: 'Symbol already loaded' });
   }
-  
+
   await initializeSymbol(sym);
   res.json({ success: true, symbol: sym });
 });
@@ -2273,7 +2273,7 @@ app.post('/api/symbols/remove', (req, res) => {
   if (!symbol) {
     return res.status(400).json({ error: 'Symbol required' });
   }
-  
+
   const sym = symbol.toUpperCase();
   if (marketManagers[sym]) {
     delete marketManagers[sym];
@@ -2288,41 +2288,41 @@ app.post('/api/timeframe', async (req, res) => {
   if (!CONFIG.TIMEFRAMES[timeframe]) {
     return res.status(400).json({ error: 'Invalid timeframe' });
   }
-  
+
   currentTimeframe = timeframe;
-  
+
   for (const symbol of Object.keys(marketManagers)) {
     await fetchKlines(symbol, timeframe);
     broadcastMarketData(symbol);
   }
-  
+
   broadcast({ type: 'timeframe_changed', timeframe });
   res.json({ success: true, timeframe });
 });
 
 app.post('/api/order', async (req, res) => {
   const { symbol, side, positionSize, leverage } = req.body;
-  
+
   if (!symbol || !side) {
     return res.status(400).json({ error: 'Symbol and side required' });
   }
-  
+
   const result = await executeEntry(symbol.toUpperCase(), side.toLowerCase(), positionSize, leverage);
   res.json(result);
 });
 
 app.post('/api/close', async (req, res) => {
   const { symbol } = req.body;
-  
+
   if (!symbol) {
     return res.status(400).json({ error: 'Symbol required' });
   }
-  
+
   const manager = activePositions.get(symbol.toUpperCase());
   if (!manager) {
     return res.status(404).json({ error: 'Position not found' });
   }
-  
+
   await manager.closePosition('Manual close via API');
   res.json({ success: true });
 });
@@ -2343,7 +2343,7 @@ app.get('/api/contracts', async (req, res) => {
 // V3.5: Math calculation endpoint for testing
 app.post('/api/calculate', (req, res) => {
   const { type, params } = req.body;
-  
+
   try {
     let result;
     switch (type) {
@@ -2445,7 +2445,7 @@ function startIntervals() {
           if (pos.currentQty !== 0) {
             const symbol = pos.symbol;
             const manager = activePositions.get(symbol);
-            
+
             if (manager && manager.status === 'pending') {
               manager.status = 'open';
               manager.entryPrice = parseFloat(pos.avgEntryPrice);
@@ -2455,7 +2455,7 @@ function startIntervals() {
           }
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Silently handle sync errors
     }
   }, 60000));
