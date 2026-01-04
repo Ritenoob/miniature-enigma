@@ -97,7 +97,6 @@ class LiveMetrics extends EventEmitter {
     
     // Update percentiles
     const sorted = [...this.eventLoopLag.samples].sort((a, b) => a - b);
-    const len = sorted.length;
     
     this.eventLoopLag.p50 = this.getPercentile(sorted, 50);
     this.eventLoopLag.p95 = this.getPercentile(sorted, 95);
