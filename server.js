@@ -172,16 +172,20 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  // Content Security Policy - allow inline scripts and styles for dashboard
-  // Note: 'unsafe-inline' is required because the dashboard (index.html) uses inline scripts.
-  // For enhanced security, consider refactoring to use nonces or external script files.
-  res.setHeader('Content-Security-Policy', 
+  const cspNonce = crypto.randomBytes(16).toString('base64');
+  res.locals.cspNonce = cspNonce;
+
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  // Content Security Policy - use nonce for scripts, allow inline styles for dashboard
+  res.setHeader(
+    'Content-Security-Policy',
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline'; " +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "font-src 'self' https://fonts.gstatic.com; " +
-    "connect-src 'self' ws: wss:; " +
-    "img-src 'self' data:;"
+      "script-src 'self' 'nonce-" + cspNonce + "'; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com; " +
+      "connect-src 'self' ws: wss:; " +
+      "img-src 'self' data:;"
   );
   next();
 });
