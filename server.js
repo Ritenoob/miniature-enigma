@@ -45,6 +45,13 @@ const OrderValidator = require('./src/lib/OrderValidator');
 const SignalGenerator = require('./src/lib/SignalGenerator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
+// Initialize SignalGenerator with config (safe to call multiple times)
+try {
+  SignalGenerator.initialize();
+} catch (error) {
+  console.warn('[Server] SignalGenerator config load failed, using defaults:', error.message);
+}
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
