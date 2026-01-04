@@ -1,0 +1,17 @@
+node_modules/
+positions.json
+retry_queue.json
+*.log
+.env
+.env.*
+!.env.example
+docs/
+dist/
+build/
+coverage/
+*.txt
+*.md
+*.docx
+*.xml
+*.doc
+research/data/
