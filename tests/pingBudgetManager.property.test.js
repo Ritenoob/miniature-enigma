@@ -3,7 +3,6 @@ process.env.RUN_INTERVALS = 'false';
 
 const fc = require('fast-check');
 const { test, describe } = require('node:test');
-const assert = require('node:assert');
 const { AdaptiveTokenBucket, PingBudgetManager } = require('../src/lib/PingBudgetManager');
 
 describe('AdaptiveTokenBucket Property-Based Tests', () => {
