@@ -4,6 +4,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
+const path = require('path');
 const SignalGenerator = require('../src/lib/SignalGenerator');
 
 describe('SignalGenerator', () => {
@@ -24,14 +25,14 @@ describe('SignalGenerator', () => {
   };
 
   test('loads default configuration successfully', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     assert.ok(SignalGenerator.config, 'Config should be loaded');
     assert.ok(SignalGenerator.config.weights, 'Config should have weights');
     assert.ok(SignalGenerator.config.thresholds, 'Config should have thresholds');
   });
 
   test('generates signal with default profile', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     SignalGenerator.setProfile('default');
     
     const signal = SignalGenerator.generate(testIndicators);
@@ -45,7 +46,7 @@ describe('SignalGenerator', () => {
   });
 
   test('switches profiles successfully', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     // Switch to aggressive
     SignalGenerator.setProfile('aggressive');
@@ -67,7 +68,7 @@ describe('SignalGenerator', () => {
   });
 
   test('rejects invalid profile names', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     assert.throws(() => {
       SignalGenerator.setProfile('nonexistent');
@@ -75,7 +76,7 @@ describe('SignalGenerator', () => {
   });
 
   test('different profiles produce different scores', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     // Generate signal with default profile
     SignalGenerator.setProfile('default');
@@ -141,7 +142,7 @@ describe('SignalGenerator', () => {
   });
 
   test('handles missing indicators gracefully', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     const partialIndicators = {
       rsi: 50,
@@ -166,7 +167,7 @@ describe('SignalGenerator', () => {
   });
 
   test('returns correct signal structure', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     const signal = SignalGenerator.generate(testIndicators);
     
@@ -186,7 +187,7 @@ describe('SignalGenerator', () => {
   });
 
   test('gets list of available profiles', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     const profiles = SignalGenerator.getAvailableProfiles();
     
@@ -212,7 +213,7 @@ describe('SignalGenerator', () => {
   });
 
   test('thresholds determine signal type correctly', () => {
-    SignalGenerator.initialize();
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     // Create indicators that will produce specific scores
     const strongBuyIndicators = {
@@ -239,7 +240,8 @@ describe('SignalGenerator', () => {
   });
 
   test('profile switching is thread-safe (atomic)', () => {
-    SignalGenerator.initialize();
+    // Ensure we have a proper config with profiles
+    SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
     
     // Switch profile
     SignalGenerator.setProfile('aggressive');
