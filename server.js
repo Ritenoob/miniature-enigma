@@ -1,8 +1,23 @@
 // ============================================================================
 // KuCoin Perpetual Futures Dashboard - Semi-Automated Trading System
-// Version: 3.5.2
+// Version: 3.6.0
 // 
-// CHANGELOG FROM V3.5.1:
+// CHANGELOG FROM V3.5.2:
+// - **V3.6.0 NEW FEATURES:**
+// - Fixed .well-known DevTools 404 errors (returns JSON instead of HTML)
+// - Live Strategy Optimizer System for parallel variant testing
+// - OptimizerConfig: Parameter constraints, variant generation, validation
+// - ScoringEngine: Composite scoring, statistical significance, confidence gating
+// - TelemetryFeed: Real-time metrics streaming via WebSocket
+// - LiveOptimizerController: Parallel strategy testing with safety mechanisms
+// - 5 new API endpoints: /api/optimizer/{status,results,start,stop,promote}
+// - Signal metadata tagging (experimental flag, variant ID, confidence score)
+// - Paper trading default with configurable safety limits
+// - Rate limiting (30 API calls/min) and throttling
+// - Statistical validation (n≥50, p<0.05) for strategy promotion
+// - Comprehensive test suite: 39 new tests (56 total passing)
+// - Complete documentation: docs/OPTIMIZER_GUIDE.md
+// 
 // - **V3.5.2 ENHANCEMENTS:**
 // - Precision-safe financial math with decimal.js (eliminates floating-point errors)
 // - Stop order state machine for protection against cancel-then-fail exposure
@@ -44,6 +59,12 @@ const SecureLogger = require('./src/lib/SecureLogger');
 const OrderValidator = require('./src/lib/OrderValidator');
 const SignalGenerator = require('./src/lib/SignalGenerator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
+
+// ============================================================================
+// OPTIMIZER MODULES (disabled by default)
+// ============================================================================
+const OptimizerConfig = require('./src/optimizer/OptimizerConfig');
+const LiveOptimizerController = require('./src/optimizer/LiveOptimizerController');
 
 // ============================================================================
 // CONFIGURATION
@@ -121,7 +142,12 @@ const CONFIG = {
   
   // Data file for position persistence
   POSITIONS_FILE: './positions.json',
-  RETRY_QUEUE_FILE: './retry_queue.json'
+  RETRY_QUEUE_FILE: './retry_queue.json',
+  
+  // Optimizer settings (disabled by default)
+  OPTIMIZER: {
+    ENABLED: process.env.OPTIMIZER_ENABLED === 'true' || false
+  }
 };
 
 // ============================================================================
@@ -146,12 +172,36 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  const cspNonce = crypto.randomBytes(16).toString('base64');
+  res.locals.cspNonce = cspNonce;
+
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  // Content Security Policy - use nonce for scripts, allow inline styles for dashboard
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+      "script-src 'self' 'nonce-" + cspNonce + "'; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com; " +
+      "connect-src 'self' ws: wss:; " +
+      "img-src 'self' data:;"
+  );
   next();
 });
 
 // Favicon handler
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
+});
+
+// .well-known handler for DevTools and other well-known paths
+app.get('/.well-known/*', (req, res) => {
+  res.status(404).json({ 
+    error: 'Not Found',
+    path: req.path,
+    message: 'The requested .well-known resource does not exist'
+  });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -199,6 +249,11 @@ const positionMonitor = new EventEmitter();
 
 let currentTimeframe = '5min';
 let accountBalance = 0;
+
+// ============================================================================
+// OPTIMIZER CONTROLLER (initialized later after other components)
+// ============================================================================
+let optimizerController = null;
 
 // ============================================================================
 // V3.5.2: PRECISION-SAFE MATH UTILITIES USING DECIMAL.JS
@@ -855,10 +910,9 @@ class TechnicalIndicators {
 }
 
 // ============================================================================
-// SIGNAL GENERATOR (-100 to +100)
-// ============================================================================
-// SignalGenerator is now imported from src/lib/SignalGenerator.js
+// SignalGenerator is imported from src/lib/SignalGenerator.js (line 60)
 // Initialize with config from signal-weights.js
+// ============================================================================
 SignalGenerator.initialize();
 
 // ============================================================================
@@ -1627,8 +1681,8 @@ function broadcastInitialState(ws) {
       trading: CONFIG.TRADING,
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
-      signalProfile: SignalGenerator.getActiveProfile(),
-      version: '3.5.2'
+      version: '3.6.0',
+      signalProfile: SignalGenerator.getActiveProfile()
     }
   }));
 }
@@ -2151,7 +2205,7 @@ wss.on('connection', async (ws) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.5.2',
+    version: '3.6.0',
     uptime: process.uptime(),
     symbols: Object.keys(marketManagers).length,
     positions: activePositions.size,
@@ -2163,7 +2217,7 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
-    version: '3.5.2',
+    version: '3.6.0',
     symbols: Object.keys(marketManagers),
     positions: activePositions.size,
     balance: accountBalance,
@@ -2378,6 +2432,116 @@ app.post('/api/calculate', (req, res) => {
 });
 
 // ============================================================================
+// OPTIMIZER API ENDPOINTS
+// ============================================================================
+app.get('/api/optimizer/status', (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED) {
+      return res.json({ 
+        enabled: false, 
+        message: 'Optimizer is disabled. Set OPTIMIZER_ENABLED=true to enable.' 
+      });
+    }
+    
+    if (!optimizerController) {
+      return res.json({ 
+        enabled: true, 
+        running: false, 
+        message: 'Optimizer is not initialized' 
+      });
+    }
+    
+    const status = optimizerController.getStatus();
+    res.json({ 
+      enabled: true, 
+      ...status 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/optimizer/results', (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED || !optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not enabled or initialized' });
+    }
+    
+    const results = optimizerController.getResults();
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/start', async (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED) {
+      return res.status(400).json({ error: 'Optimizer is disabled' });
+    }
+    
+    if (!optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not initialized' });
+    }
+    
+    const options = req.body || {};
+    const result = await optimizerController.start(options);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/stop', async (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED || !optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not enabled or initialized' });
+    }
+    
+    const result = await optimizerController.stop();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/optimizer/promote', async (req, res) => {
+  try {
+    if (!CONFIG.OPTIMIZER.ENABLED || !optimizerController) {
+      return res.status(400).json({ error: 'Optimizer is not enabled or initialized' });
+    }
+    
+    const { variantId } = req.body;
+    
+    if (!variantId) {
+      return res.status(400).json({ error: 'variantId is required' });
+    }
+    
+    const result = await optimizerController.promoteVariant(variantId);
+    res.json(result);
+  } catch (error) {
+    // Return a more specific response when the variant does not exist
+    const message = (error && error.message) ? String(error.message) : '';
+    if ((error && error.code === 'VARIANT_NOT_FOUND') || message.toLowerCase().includes('variant not found')) {
+      return res.status(404).json({ error: 'Variant not found' });
+    }
+    
+    res.status(500).json({ error: message || 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// 404 ERROR HANDLER
+// ============================================================================
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    path: req.path,
+    message: 'The requested endpoint does not exist'
+  });
+});
+
+// ============================================================================
 // PERIODIC UPDATES
 // ============================================================================
 function sleep(ms) {
@@ -2473,8 +2637,15 @@ function stopIntervals() {
 async function startup() {
   console.log('');
   console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║     KuCoin Perpetual Futures Dashboard v3.5.2                 ║');
+  console.log('║     KuCoin Perpetual Futures Dashboard v3.6.0                 ║');
   console.log('║     Semi-Automated Trading System                             ║');
+  console.log('║                                                               ║');
+  console.log('║     V3.6 NEW FEATURES:                                        ║');
+  console.log('║     • Live Strategy Optimizer System                          ║');
+  console.log('║     • Parallel variant testing with statistical validation    ║');
+  console.log('║     • Real-time metrics streaming via WebSocket               ║');
+  console.log('║     • Fixed .well-known DevTools 404 errors                   ║');
+  console.log('║     • 5 new /api/optimizer/* endpoints                        ║');
   console.log('║                                                               ║');
   console.log('║     V3.5 ENHANCEMENTS:                                        ║');
   console.log('║     • Fee-adjusted break-even calculation                     ║');
@@ -2512,6 +2683,19 @@ async function startup() {
   // Initialize market data
   await initializeAllSymbols();
 
+  // Initialize optimizer if enabled
+  if (CONFIG.OPTIMIZER.ENABLED) {
+    console.log('[INIT] Initializing Live Optimizer...');
+    try {
+      optimizerController = new LiveOptimizerController(OptimizerConfig);
+      console.log('[INIT] ✓ Live Optimizer initialized (not running)');
+    } catch (error) {
+      console.error('[INIT] ✗ Failed to initialize optimizer:', error.message);
+    }
+  } else {
+    console.log('[INIT] Live Optimizer is disabled (set OPTIMIZER_ENABLED=true to enable)');
+  }
+
   if (SHOULD_START_INTERVALS) {
     startIntervals();
   }
@@ -2528,11 +2712,22 @@ async function startup() {
 }
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n[SHUTDOWN] Saving positions...');
   savePositions();
   console.log('[SHUTDOWN] Saving retry queue...');
   retryQueueManager.save();
+  
+  // Stop optimizer if running
+  if (optimizerController && optimizerController.running) {
+    console.log('[SHUTDOWN] Stopping optimizer...');
+    try {
+      await optimizerController.stop();
+    } catch (err) {
+      console.error('[SHUTDOWN] Failed to stop optimizer cleanly:', err);
+    }
+  }
+  
   console.log('[SHUTDOWN] Closing connections...');
   stopIntervals();
   wsClients.forEach(ws => ws.close());

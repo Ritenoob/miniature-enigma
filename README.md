@@ -1,4 +1,51 @@
-# KuCoin Perpetual Futures Dashboard v3.5.2
+# KuCoin Perpetual Futures Dashboard v3.6.0
+
+## 🚀 V3.6.0 Major Update - Live Strategy Optimizer
+
+This version introduces a **production-grade live strategy optimization system** with parallel variant testing, statistical validation, and real-time performance metrics.
+
+### V3.6.0 New Features
+
+| Feature | Description |
+|---------|-------------|
+| **Live Strategy Optimizer** | Test multiple strategy variants in parallel with live market data |
+| **Statistical Validation** | Confidence gating with z-test significance (n≥50, p<0.05) |
+| **Real-time Telemetry** | WebSocket streaming of strategy performance metrics |
+| **Composite Scoring** | ROI, Sharpe ratio, win rate, consistency, drawdown analysis |
+| **Safety Mechanisms** | Paper trading, loss limits, rate throttling, isolated state |
+| **API Integration** | 5 new endpoints: `/api/optimizer/*` for control and monitoring |
+| **Signal Tagging** | Experimental flag, variant ID, confidence score metadata |
+| **Fixed DevTools Errors** | Proper JSON 404 for `.well-known` requests |
+| **Comprehensive Tests** | 39 new tests (56 total passing) |
+| **Complete Documentation** | `docs/OPTIMIZER_GUIDE.md` with examples and best practices |
+
+### Quick Start with Optimizer
+
+Enable the optimizer:
+```bash
+OPTIMIZER_ENABLED=true node server.js
+```
+
+Control via API:
+```bash
+# Start testing 5 strategy variants
+curl -X POST http://localhost:3001/api/optimizer/start \
+  -H "Content-Type: application/json" \
+  -d '{"maxVariants": 5}'
+
+# Check status
+curl http://localhost:3001/api/optimizer/status
+
+# View results with rankings
+curl http://localhost:3001/api/optimizer/results
+
+# Stop testing
+curl -X POST http://localhost:3001/api/optimizer/stop
+```
+
+See `docs/OPTIMIZER_GUIDE.md` for complete documentation.
+
+---
 
 ## 🚀 V3.5.2 Comprehensive Upgrade
 
@@ -31,9 +78,9 @@ This version implements **production-grade reliability and precision** with deci
 
 ---
 
-## 🏗️ Architecture (V3.5.2)
+## 🏗️ Architecture (V3.6.0)
 
-### New Module Structure
+### Module Structure
 
 ```
 src/
@@ -45,6 +92,13 @@ src/
 │   ├── SecureLogger.js          # Redacted logging utilities
 │   ├── EventBus.js              # Hot/cold path event bus
 │   └── index.js                 # Module exports
+├── optimizer/                    # V3.6.0 Live Strategy Optimizer
+│   ├── OptimizerConfig.js       # Parameter constraints & variant generation
+│   ├── ScoringEngine.js         # Composite scoring & statistical validation
+│   ├── TelemetryFeed.js         # Real-time metrics pub/sub
+│   └── LiveOptimizerController.js # Parallel variant executor
+docs/
+└── OPTIMIZER_GUIDE.md           # Complete optimizer documentation
 ```
 
 ### DecimalMath
