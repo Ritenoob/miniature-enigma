@@ -57,6 +57,7 @@ const DecimalMath = require('./src/lib/DecimalMath');
 const { validateConfig } = require('./src/lib/ConfigSchema');
 const SecureLogger = require('./src/lib/SecureLogger');
 const OrderValidator = require('./src/lib/OrderValidator');
+const SignalGenerator = require('./src/lib/SignalGenerator');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
 // ============================================================================
@@ -1033,6 +1034,9 @@ class SignalGenerator {
     };
   }
 }
+// SignalGenerator is now imported from src/lib/SignalGenerator.js
+// Initialize with config from signal-weights.js
+SignalGenerator.initialize();
 
 // ============================================================================
 // MARKET DATA MANAGER
@@ -1801,6 +1805,8 @@ function broadcastInitialState(ws) {
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
       version: '3.6.0'
+      signalProfile: SignalGenerator.getActiveProfile(),
+      version: '3.5.2'
     }
   }));
 }
@@ -2283,6 +2289,22 @@ wss.on('connection', async (ws) => {
             broadcastLog('info', `Config updated: ${JSON.stringify(data.config)}`);
           }
           break;
+
+        case 'set_signal_profile':
+          if (data.profile) {
+            try {
+              SignalGenerator.setProfile(data.profile);
+              broadcastLog('info', `Signal profile changed to: ${data.profile}`);
+              broadcast({ 
+                type: 'signal_profile_changed', 
+                profile: data.profile,
+                config: SignalGenerator.getActiveProfile()
+              });
+            } catch (error) {
+              broadcastLog('error', `Failed to change profile: ${error.message}`);
+            }
+          }
+          break;
       }
 
     } catch (error) {
@@ -2381,6 +2403,31 @@ app.post('/api/config', (req, res) => {
     res.json({ success: true, config: CONFIG.TRADING });
   } else {
     res.status(400).json({ error: 'No config provided' });
+  }
+});
+
+// Signal configuration endpoints
+app.get('/api/signal/config', (req, res) => {
+  res.json({
+    activeProfile: SignalGenerator.getActiveProfile(),
+    availableProfiles: SignalGenerator.getAvailableProfiles(),
+    thresholds: require('./signal-weights').thresholds
+  });
+});
+
+app.post('/api/signal/config', (req, res) => {
+  const { profile } = req.body;
+  
+  if (!profile) {
+    return res.status(400).json({ error: 'Profile name required' });
+  }
+  
+  try {
+    SignalGenerator.setProfile(profile);
+    broadcastLog('info', `Signal profile switched to: ${profile}`);
+    res.json({ success: true, profile: SignalGenerator.getActiveProfile() });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 

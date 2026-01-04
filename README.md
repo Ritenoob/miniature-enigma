@@ -165,8 +165,8 @@ Comprehensive tests with fast-check:
 // Example: SL is always less than entry for longs
 fc.assert(
   fc.property(
-    fc.double({ min: 100, max: 100000 }),  // entry
-    fc.double({ min: 0.1, max: 50 }),      // ROI
+    fc.float({ min: Math.fround(100), max: Math.fround(100000), noNaN: true }),  // entry
+    fc.float({ min: Math.fround(0.1), max: Math.fround(50), noNaN: true }),      // ROI
     fc.integer({ min: 1, max: 100 }),      // leverage
     (entry, roi, leverage) => {
       const sl = DecimalMath.calculateStopLossPrice('long', entry, roi, leverage);
