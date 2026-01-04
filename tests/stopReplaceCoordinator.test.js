@@ -120,7 +120,7 @@ describe('StopReplaceCoordinator', () => {
         await new Promise(resolve => setTimeout(resolve, 10));
         return { data: { success: true } };
       },
-      placeStopOrder: async (params) => {
+      placeStopOrder: async () => {
         states.push(coordinator.state);
         await new Promise(resolve => setTimeout(resolve, 10));
         return { data: { orderId: 'order_123' } };
@@ -155,7 +155,7 @@ describe('StopReplaceCoordinator', () => {
     let attempts = 0;
     
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async () => {
         attempts++;
         if (attempts < 3) {
           throw new Error('API Error');
@@ -193,7 +193,7 @@ describe('StopReplaceCoordinator', () => {
     let attempts = 0;
     
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async () => {
         attempts++;
         if (attempts < 2) {
           const error = new Error('Too Many Requests');
@@ -385,7 +385,7 @@ describe('StopReplaceCoordinator', () => {
 
   test('enforces reduceOnly validation on stop orders', async () => {
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async () => {
         return { data: { orderId: 'order_123' } };
       }
     };
@@ -416,11 +416,11 @@ describe('StopReplaceCoordinator', () => {
     let cancelAttempted = false;
     
     const mockApi = {
-      cancelStopOrder: async (orderId) => {
+      cancelStopOrder: async () => {
         cancelAttempted = true;
         throw new Error('Order already filled');
       },
-      placeStopOrder: async (params) => {
+      placeStopOrder: async () => {
         return { data: { orderId: 'new_order_789' } };
       }
     };
