@@ -88,7 +88,7 @@ class TelemetryFeed extends EventEmitter {
       if (ws.readyState === 1) { // OPEN
         try {
           ws.send(data);
-        } catch (error) {
+        } catch {
           // Remove failed connections
           this.subscribers.delete(ws);
         }
