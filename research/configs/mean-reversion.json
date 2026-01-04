@@ -1,0 +1,95 @@
+{
+  "name": "Mean Reversion Extremes",
+  "version": "1.0.0",
+  "created": "2024-12-30",
+  "description": "Oversold/overbought extremes strategy for ranging markets",
+  "strategy_template": "T1_mean_reversion",
+  "recommended_symbols": ["BTCUSDT", "ETHUSDT"],
+  "recommended_timeframes": ["5m", "15m"],
+  "signal_config": {
+    "weights": {
+      "rsi": {
+        "max": 30,
+        "oversold": 25,
+        "oversoldMild": 35,
+        "overbought": 75,
+        "overboughtMild": 65
+      },
+      "williamsR": {
+        "max": 25,
+        "oversold": -85,
+        "overbought": -15
+      },
+      "macd": {
+        "max": 10
+      },
+      "ao": {
+        "max": 10
+      },
+      "emaTrend": {
+        "max": 5
+      },
+      "stochastic": {
+        "max": 20,
+        "oversold": 15,
+        "overbought": 85
+      },
+      "bollinger": {
+        "max": 20,
+        "period": 20,
+        "stdDev": 2
+      },
+      "kdj": {
+        "max": 15,
+        "oversold": 15,
+        "overbought": 85
+      },
+      "adx": {
+        "max": -10,
+        "comment": "Negative weight prefers low ADX (ranging)"
+      }
+    },
+    "thresholds": {
+      "strongBuy": 70,
+      "buy": 50,
+      "buyWeak": 30,
+      "strongSell": -70,
+      "sell": -50,
+      "sellWeak": -30
+    }
+  },
+  "backtest_config": {
+    "positionSizePercent": 0.4,
+    "leverage": 10,
+    "stopLossROI": 0.5,
+    "takeProfitROI": 1.5,
+    "maxPositions": 4,
+    "maxTradesPerDay": 12,
+    "cooldownBars": 5,
+    "fillModel": "probabilistic_limit",
+    "makerFee": 0.0002,
+    "takerFee": 0.0006,
+    "slippageModel": "spread_based",
+    "signalThreshold": 50,
+    "useRegimeFilter": true,
+    "allowedRegimes": ["ranging"]
+  },
+  "risk_profile": {
+    "max_drawdown_target": 0.12,
+    "min_sharpe": 1.6,
+    "min_win_rate": 0.52,
+    "expected_trades_per_day": 5
+  },
+  "notes": [
+    "Heavy oscillator weights (RSI 30, W%R 25, Stoch 20, KDJ 15, BB 20)",
+    "Low trend weight (EMA 5, MACD 10)",
+    "Negative ADX weight (-10) prefers ranging markets",
+    "Wide oversold/overbought levels (25/75 for RSI)",
+    "Probabilistic limit orders for better fills",
+    "ADX < 20 regime filter",
+    "Shorter TP (1.5% ROI) for quick profits",
+    "Moderate leverage (10x)",
+    "Best for consolidation/ranging periods",
+    "Trades extremes and reversals"
+  ]
+}
