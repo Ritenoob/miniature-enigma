@@ -156,7 +156,7 @@ class LiveMetrics extends EventEmitter {
    */
   getMaxStaleness() {
     let max = 0;
-    for (const [symbol, timestamp] of this.feedStaleness.entries()) {
+    for (const timestamp of this.feedStaleness.values()) {
       const staleness = Date.now() - timestamp;
       if (staleness > max) {
         max = staleness;
