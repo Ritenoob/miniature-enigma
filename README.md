@@ -337,6 +337,18 @@ All exit orders use `reduceOnly: true` to prevent accidental position reversal.
 - 5-second cooldown on rate limit errors
 - Automatic retry with backoff
 
+### CodeQL Code Scanning
+
+This repository uses **Advanced CodeQL setup** via `.github/workflows/codeql.yml`. 
+
+⚠️ **IMPORTANT**: Do NOT enable "Default" CodeQL in the repository's Security settings. Running both configurations will cause workflow failures.
+
+**Current configuration:**
+- Languages scanned: `actions`, `javascript-typescript`
+- Scan triggers: Push to main, Pull requests, Weekly schedule (Fridays 4:29 AM UTC)
+
+To modify CodeQL settings, edit `.github/workflows/codeql.yml` directly.
+
 ---
 
 ## 📁 File Structure
