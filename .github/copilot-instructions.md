@@ -4,7 +4,7 @@ This document provides instructions for GitHub Copilot when working on the KuCoi
 
 ## Project Overview
 
-This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automated trading system for cryptocurrency futures trading. The system provides:
+This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.2** - a semi-automated trading system for cryptocurrency futures trading. The system provides:
 
 - Real-time market data visualization
 - Technical indicator analysis and signal generation
@@ -20,6 +20,51 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
 - **Communication**: WebSocket for real-time updates
 - **API**: KuCoin Futures API
 - **Database**: JSON file-based persistence (positions.json, retry_queue.json)
+- **Testing**: Node.js built-in test runner with fast-check for property-based testing
+- **Math**: decimal.js for precision-safe financial calculations
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js >= 16.0.0
+- npm (comes with Node.js)
+- KuCoin account with Futures API access (or use DEMO_MODE)
+
+### Environment Setup
+
+1. **Clone and install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Configure environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your KuCoin API credentials
+   # OR set DEMO_MODE=true for synthetic data and mock trading
+   ```
+
+3. **Run tests** to verify setup:
+   ```bash
+   npm test
+   ```
+
+4. **Start the server**:
+   ```bash
+   npm start        # Production mode
+   npm run dev      # Development mode with auto-reload
+   ```
+
+5. **Access dashboard**: Open http://localhost:3001 in your browser
+
+### Demo Mode
+
+For safe exploration without live trading:
+- Set `DEMO_MODE=true` in `.env`
+- Uses synthetic market data and mock KuCoin client
+- Never sends live orders to the exchange
+- Perfect for testing and development
 
 ## Architecture
 
@@ -30,10 +75,23 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
 ├── server.js              # Main backend server (2500+ lines)
 ├── index.html             # Frontend dashboard (3000+ lines)
 ├── signal-weights.js      # Signal generation configuration
-├── positions.json         # Position persistence
-├── retry_queue.json       # Failed API operations queue
 ├── package.json           # Dependencies
-└── .env                   # API credentials (not committed)
+├── .env                   # API credentials (not committed)
+├── positions.json         # Position persistence (auto-generated)
+├── retry_queue.json       # Failed API operations queue (auto-generated)
+├── src/
+│   ├── lib/               # Core libraries (DecimalMath, OrderValidator, etc.)
+│   └── optimizer/         # Trading optimization modules
+├── tests/                 # Test suite (189 tests)
+├── docs/                  # Additional documentation
+│   ├── TESTING.md         # Testing guidelines
+│   ├── OPTIMIZER.md       # Optimizer documentation
+│   ├── SIGNAL_CONFIG.md   # Signal configuration guide
+│   └── OHLC_PROVIDER.md   # Market data provider docs
+└── .github/
+    ├── copilot-instructions.md  # This file
+    ├── CONTRIBUTING.md          # Contribution guidelines
+    └── workflows/               # CI/CD workflows
 ```
 
 ### Key Components
@@ -53,6 +111,15 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
    - Order book visualization
    - Position management interface
    - Trade execution with confirmation modal
+
+3. **Core Libraries (src/lib/)**
+   - **DecimalMath.js**: Precision-safe financial calculations using decimal.js (eliminates floating-point errors)
+   - **OrderValidator.js**: Validates and enforces `reduceOnly: true` on all exit orders
+   - **ConfigSchema.js**: Configuration validation at startup with clear error messages
+   - **SignalGenerator.js**: Multi-profile signal generation with configurable weights
+   - **StopOrderStateMachine.js**: State machine for stop order protection (prevents cancel-then-fail exposure)
+   - **SecureLogger.js**: API key/secret redaction utilities
+   - **EventBus.js**: Hot/cold path event architecture for latency-sensitive operations
 
 ## Coding Standards
 
@@ -247,11 +314,43 @@ Signals range from -120 (Strong Sell) to +120 (Strong Buy):
 
 ### Testing Changes
 
-1. Start server: `npm start`
+#### Automated Tests
+
+**ALWAYS run tests before and after making changes:**
+
+```bash
+npm test                              # Run all tests
+npm test tests/tradeMath.test.js     # Run specific test file
+npm run test:rate-limit              # Run rate limit tests
+```
+
+The test suite includes:
+- **Unit tests**: Individual component testing
+- **Property-based tests**: Using fast-check for edge case coverage (see docs/TESTING.md)
+- **Integration tests**: End-to-end workflow testing
+
+**Important**: When writing property-based tests with `fc.float()`, always wrap min/max values with `Math.fround()`:
+```javascript
+fc.float({ min: Math.fround(100), max: Math.fround(1000), noNaN: true })
+```
+See `docs/TESTING.md` for complete property-based testing guidelines.
+
+#### Manual Testing
+
+1. Start server: `npm start` (or `npm run dev` for auto-reload)
 2. Open dashboard: `http://localhost:3001`
 3. Monitor console logs for errors
 4. Check WebSocket connection status
-5. Test with real market data (requires API keys)
+5. Test with real market data (requires API keys) or use `DEMO_MODE=true`
+
+#### Testing Checklist
+
+- [ ] Run `npm test` - All tests pass
+- [ ] No console errors in browser or server
+- [ ] WebSocket connection establishes successfully
+- [ ] Market data updates in real-time
+- [ ] Position calculations are accurate
+- [ ] No security vulnerabilities introduced
 
 ### Common Tasks
 
@@ -314,20 +413,44 @@ async executeNewOrderType() {
 - **USE** the TradeMath utility functions instead of reimplementing calculations
 - **RESPECT** the separation between server and client code
 
+## Additional Documentation
+
+For more detailed information, refer to:
+
+- **docs/TESTING.md** - Testing guidelines and property-based testing with fast-check
+- **docs/OPTIMIZER.md** - Trading optimization engine documentation
+- **docs/SIGNAL_CONFIG.md** - Signal configuration and weight tuning
+- **docs/OHLC_PROVIDER.md** - Market data provider implementation
+- **.github/CONTRIBUTING.md** - Contribution guidelines and development workflow
+- **README.md** - User-facing documentation with quick start guide
+
 ## Resources
 
-- KuCoin Futures API: https://docs.kucoin.com/futures/
-- Technical Indicators: Standard TA-Lib formulas
-- Risk Management: Based on v3.5 documentation (includes position sizing, ROI-based SL/TP, fee calculations, liquidation formulas, and trailing stop algorithms)
+- **KuCoin Futures API**: https://docs.kucoin.com/futures/
+- **Technical Indicators**: Standard TA-Lib formulas
+- **Risk Management**: Based on v3.5 documentation (includes position sizing, ROI-based SL/TP, fee calculations, liquidation formulas, and trailing stop algorithms)
+- **decimal.js**: https://github.com/MikeMcl/decimal.js/ (precision math library)
+- **fast-check**: https://github.com/dubzzz/fast-check (property-based testing)
+
+## CI/CD
+
+The project uses GitHub Actions for continuous integration:
+
+- **ci.yml**: Runs all tests on push and pull requests
+- **codeql.yml**: Security analysis and vulnerability scanning
+
+All commits should pass CI checks before merging.
 
 ## Version History
 
-- **v3.5.0** (Current): Fee-adjusted break-even, accurate liquidation, slippage buffer, API retry queue
+- **v3.5.2** (Current): Precision-safe math with decimal.js, order validation, config validation, property-based tests, stop order state machine
+- **v3.5.1**: Demo mode, test-friendly startup controls, automated tests, GitHub Actions CI
+- **v3.5.0**: Fee-adjusted break-even, accurate liquidation, slippage buffer, API retry queue
 - **v3.4.2**: ROI-based SL/TP, confirmation modal
 - **v3.4.1**: Leverage-adjusted SL/TP
 - **v3.4.0**: Dollar-based position sizing
 
 ---
 
-**Last Updated**: December 2025
+**Last Updated**: January 2026
 **Maintained By**: Development Team
