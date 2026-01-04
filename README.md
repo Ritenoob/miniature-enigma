@@ -164,7 +164,7 @@ leveragedPnlPercent = (unrealizedPnl / marginUsed) × 100
 
 **Key Insight:** A 0.2% price move at 10x leverage = 2% ROI on margin.
 
-### ROI-Based Stop-Loss & Take-Profit (V3.4.1+)
+### ROI-Based Stop-Loss & Take-Profit (V3.5.0+)
 
 The stop-loss and take-profit are defined by target ROI percentages, not raw price percentages:
 
@@ -259,6 +259,22 @@ npm start
 ### 4. Open Dashboard
 
 Navigate to `http://localhost:3001`
+
+### 5. Run the Python MACD Strategy (ETH/USDT Perps @ 100×)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # add your KuCoin API credentials
+python eth_macd_strategy.py
+```
+
+**Python strategy highlights**
+- Mirrors the provided Pine Script MACD + signal-strength filter for ETH/USDT perpetuals at 100× leverage.
+- Uses the account's available USDT as starting capital; position sizing is percent-of-balance (default 1%).
+- Risk controls: static SL at -9% ROI until trailing activates; trailing starts at +10% ROI and ratchets every +8% ROI; default TP at +1% ROI.
+- Safe by default (`KUCOIN_EXECUTE_TRADES=false`); set to `true` in `.env` to place live orders.
 
 ---
 
