@@ -1804,9 +1804,8 @@ function broadcastInitialState(ws) {
       trading: CONFIG.TRADING,
       timeframes: Object.keys(CONFIG.TIMEFRAMES),
       currentTimeframe,
-      version: '3.6.0'
-      signalProfile: SignalGenerator.getActiveProfile(),
-      version: '3.5.2'
+      version: '3.6.0',
+      signalProfile: SignalGenerator.getActiveProfile()
     }
   }));
 }
