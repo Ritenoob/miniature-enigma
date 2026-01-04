@@ -11,8 +11,8 @@ describe('TradeMath Property-Based Tests', () => {
   test('SL price is always less than entry for longs, more for shorts', () => {
     fc.assert(
       fc.property(
-        fc.float({ min: 100, max: 100000, noNaN: true }),  // entry price
-        fc.float({ min: 0.1, max: 50, noNaN: true }),      // ROI risk
+        fc.double({ min: 100, max: 100000, noNaN: true }),  // entry price
+        fc.double({ min: 0.1, max: 50, noNaN: true }),      // ROI risk
         fc.integer({ min: 1, max: 100 }),                  // leverage
         (entry, roi, leverage) => {
           const longSL = DecimalMath.calculateStopLossPrice('long', entry, roi, leverage);
