@@ -4,7 +4,12 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
+const path = require('path');
+const SignalGenerator = require('../src/lib/SignalGenerator');
 const LiveOptimizerController = require('../src/optimizer/LiveOptimizerController');
+
+// Initialize SignalGenerator before tests
+SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
 
 describe('LiveOptimizerController', () => {
   test('initializes with multiple variants', () => {

@@ -3,6 +3,12 @@ process.env.RUN_INTERVALS = 'false';
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
+const path = require('path');
+const SignalGenerator = require('../src/lib/SignalGenerator');
+
+// Initialize SignalGenerator before importing server to avoid path issues
+SignalGenerator.initialize(path.resolve(__dirname, '../signal-weights.js'));
+
 const { TradeMath } = require('../server');
 
 describe('TradeMath core formulas', () => {

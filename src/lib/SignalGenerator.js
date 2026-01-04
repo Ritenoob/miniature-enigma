@@ -6,6 +6,7 @@
 // and maintains exact same calculation logic as the hardcoded version.
 
 const path = require('path');
+const fs = require('fs');
 
 /**
  * SignalGenerator class with configurable weights
@@ -15,17 +16,65 @@ class SignalGenerator {
   static config = null;
   static activeProfile = 'default';
   static configPath = null;
+  static initialized = false;
 
   /**
    * Initialize and load configuration from signal-weights.js
+   * Safe to call multiple times (idempotent)
    * @param {string} configPath - Optional path to config file (defaults to signal-weights.js)
+   * @returns {boolean} True if config loaded successfully, false if using defaults
    */
   static initialize(configPath = null) {
+    // Make initialization idempotent - safe to call multiple times
+    if (this.initialized && this.config && !configPath) {
+      return true;
+    }
+
     try {
       // Resolve config path
       this.configPath = configPath || path.resolve(__dirname, '../../signal-weights.js');
+      let resolvedPath = null;
+
+      // Priority 1: Explicit path parameter
+      if (configPath) {
+        resolvedPath = path.resolve(configPath);
+      }
+      // Priority 2: Environment variable
+      else if (process.env.SIGNAL_WEIGHTS_PATH) {
+        resolvedPath = path.resolve(process.env.SIGNAL_WEIGHTS_PATH);
+      }
+      // Priority 3: Try relative from module location
+      else {
+        const defaultPath = path.resolve(__dirname, '../../signal-weights.js');
+        if (fs.existsSync(defaultPath)) {
+          resolvedPath = defaultPath;
+        }
+        // Priority 4: Try from project root
+        else {
+          const rootPath = path.resolve(process.cwd(), 'signal-weights.js');
+          if (fs.existsSync(rootPath)) {
+            resolvedPath = rootPath;
+          }
+          // Priority 5: No config file found, use defaults
+          else {
+            console.warn('[SignalGenerator] Config file not found, using defaults');
+            this.loadDefaults();
+            this.initialized = true;
+            return true;
+          }
+        }
+      }
+
+      // Check if resolved path exists
+      if (resolvedPath && !fs.existsSync(resolvedPath)) {
+        console.warn(`[SignalGenerator] Config file not found at ${resolvedPath}, using defaults`);
+        this.loadDefaults();
+        this.initialized = true;
+        return false;
+      }
 
       // Load config file
+      this.configPath = resolvedPath;
       delete require.cache[require.resolve(this.configPath)];
       const loadedConfig = require(this.configPath);
 
@@ -36,11 +85,14 @@ class SignalGenerator {
       this.config = loadedConfig;
       this.activeProfile = loadedConfig.activeProfile || 'default';
 
+      this.initialized = true;
+      
       return true;
     } catch (error) {
       console.error(`[SignalGenerator] Failed to load config: ${error.message}`);
       // Fallback to safe defaults
       this.loadDefaults();
+      this.initialized = true;
       return false;
     }
   }
