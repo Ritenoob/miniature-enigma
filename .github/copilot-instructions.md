@@ -4,7 +4,7 @@ This document provides instructions for GitHub Copilot when working on the KuCoi
 
 ## Project Overview
 
-This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automated trading system for cryptocurrency futures trading. The system provides:
+This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.2** - a semi-automated trading system for cryptocurrency futures trading. The system provides:
 
 - Real-time market data visualization
 - Technical indicator analysis and signal generation
@@ -12,6 +12,11 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
 - Risk management with ROI-based stop-loss and take-profit
 - Fee-adjusted break-even calculations
 - API retry queue with exponential backoff
+- Precision-safe financial math using decimal.js
+- Order validation layer with reduceOnly enforcement
+- Config validation at startup
+- Multi-timeframe screener with dual timeframe analysis
+- Research and optimization modules
 
 ## Technology Stack
 
@@ -30,17 +35,51 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
 ├── server.js              # Main backend server (2500+ lines)
 ├── index.html             # Frontend dashboard (3000+ lines)
 ├── signal-weights.js      # Signal generation configuration
+├── screenerConfig.js      # Screener configuration
+├── screenerEngine.js      # Dual-timeframe screener logic
 ├── positions.json         # Position persistence
 ├── retry_queue.json       # Failed API operations queue
 ├── package.json           # Dependencies
-└── .env                   # API credentials (not committed)
+├── .env                   # API credentials (not committed)
+├── src/
+│   ├── lib/               # Core library modules (v3.5.2+)
+│   │   ├── DecimalMath.js          # Precision-safe financial calculations
+│   │   ├── OrderValidator.js       # Order validation & reduceOnly enforcement
+│   │   ├── ConfigSchema.js         # Config validation schema
+│   │   ├── SignalGenerator.js      # Signal generation logic
+│   │   ├── PingBudgetManager.js    # API rate limit management
+│   │   ├── SecureLogger.js         # Redacted logging utilities
+│   │   ├── EventBus.js             # Event bus for hot/cold paths
+│   │   ├── StopOrderStateMachine.js # Stop order state management
+│   │   └── StopReplaceCoordinator.js # Stop replacement coordination
+│   ├── marketdata/        # Market data providers
+│   │   └── OHLCProvider.js         # OHLC data provider
+│   └── optimizer/         # Optimization modules
+│       ├── ExecutionSimulator.js   # Trade execution simulator
+│       ├── LiveOptimizerController.js # Live optimization controller
+│       └── TrailingStopPolicy.js   # Trailing stop policies
+├── research/              # Research and analysis tools
+│   ├── forward/          # Forward testing
+│   ├── lib/signals/      # Extended signal generators
+│   └── scripts/          # Utility scripts
+├── tests/                # Test suite
+│   ├── tradeMath.test.js
+│   ├── tradeMath.property.test.js
+│   ├── configValidation.test.js
+│   ├── pingBudgetManager.test.js
+│   └── ... (more test files)
+└── docs/                 # Documentation
+    ├── OPTIMIZER.md
+    ├── SIGNAL_CONFIG.md
+    ├── TESTING.md
+    └── OHLC_PROVIDER.md
 ```
 
 ### Key Components
 
 1. **Server (server.js)**
    - KuCoinFuturesAPI class: API communication with retry logic
-   - TradeMath utility object: V3.5 formula implementations from PDF documentation
+   - TradeMath utility object: V3.5 formula implementations (being migrated to DecimalMath)
    - MarketDataManager: Candle data and technical indicators
    - PositionManager: Position lifecycle and risk management
    - RetryQueueManager: Failed operation retry with exponential backoff
@@ -53,6 +92,44 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
    - Order book visualization
    - Position management interface
    - Trade execution with confirmation modal
+
+3. **Library Modules (src/lib/)** - v3.5.2+
+   - **DecimalMath**: Precision-safe financial calculations using decimal.js
+     - Eliminates floating-point errors in trading calculations
+     - Used for position sizing, P&L, ROI, and fee calculations
+   - **OrderValidator**: Order validation and safety enforcement
+     - Validates all exit orders have `reduceOnly: true`
+     - Prevents accidental position reversals
+   - **ConfigSchema**: Configuration validation at startup
+     - Validates all config parameters against schema
+     - Applies defaults for missing values
+   - **SignalGenerator**: Technical indicator signal generation
+     - Modular signal generation from multiple indicators
+     - Configurable weights and thresholds
+   - **PingBudgetManager**: API rate limit management
+     - Prevents rate limit violations
+     - Exponential backoff on rate limit errors
+   - **SecureLogger**: Secure logging with credential redaction
+     - Redacts API keys and secrets from logs
+   - **StopOrderStateMachine**: Stop order state management
+     - Prevents cancel-then-fail exposure
+   - **EventBus**: Event bus for latency-sensitive operations
+     - Hot/cold path architecture
+
+4. **Market Data (src/marketdata/)**
+   - **OHLCProvider**: OHLC (candlestick) data provider
+     - Fetches and manages historical price data
+     - Supports multiple timeframes
+
+5. **Optimizer (src/optimizer/)**
+   - **ExecutionSimulator**: Simulates trade execution
+     - Backtesting and forward testing support
+   - **LiveOptimizerController**: Live optimization controller
+     - Real-time signal optimization
+
+6. **Screener**
+   - **screenerEngine.js**: Dual-timeframe screening logic
+   - **screenerConfig.js**: Screener configuration and symbol management
 
 ## Coding Standards
 
@@ -67,7 +144,58 @@ This is a **KuCoin Perpetual Futures Trading Dashboard v3.5.0** - a semi-automat
 - **Error handling**: Always use try-catch for async operations
 - **Logging**: Use `broadcastLog(type, message, data)` for server-side logging
   - Types: 'info', 'success', 'warn', 'error', 'signal'
+  - For sensitive operations, use SecureLogger to redact credentials (v3.5.2+)
 - **Comments**: Add clear section headers with `// ========` separators
+
+### V3.5.2 Best Practices
+
+- **Financial Calculations**: ALWAYS use DecimalMath instead of native JavaScript math
+  ```javascript
+  // ❌ BAD - Floating-point errors
+  const margin = accountBalance * (positionPercent / 100);
+  
+  // ✅ GOOD - Precision-safe
+  const margin = DecimalMath.calculateMarginUsed(accountBalance, positionPercent);
+  ```
+
+- **Order Validation**: ALWAYS validate orders before placement
+  ```javascript
+  // ❌ BAD - No validation
+  await api.placeOrder(params);
+  
+  // ✅ GOOD - Validated and sanitized
+  OrderValidator.validateExitOrder(params);
+  const safeParams = OrderValidator.sanitize(params, 'exit');
+  await api.placeOrder(safeParams);
+  ```
+
+- **Config Changes**: Validate config updates at runtime
+  ```javascript
+  // ❌ BAD - No validation
+  CONFIG.TRADING.LEVERAGE = newValue;
+  
+  // ✅ GOOD - Validated
+  const { validateConfig } = require('./src/lib/ConfigSchema');
+  validateConfig({ TRADING: { LEVERAGE: newValue } });
+  CONFIG.TRADING.LEVERAGE = newValue;
+  ```
+
+- **Testing**: Write property-based tests for trading formulas
+  ```javascript
+  // Use fast-check for comprehensive edge case coverage
+  const fc = require('fast-check');
+  
+  fc.assert(
+    fc.property(
+      fc.float({ min: 100, max: 100000 }),
+      fc.float({ min: 0.1, max: 50 }),
+      (entry, roi) => {
+        const sl = DecimalMath.calculateStopLossPrice('long', entry, roi, 10);
+        return sl < entry; // SL must be below entry for longs
+      }
+    )
+  );
+  ```
 
 ### Node.js Backend Patterns
 
@@ -168,6 +296,8 @@ newSL = currentSL × (1 + steps × movePercent / 100)  // for longs
 4. **Liquidation**: Must be calculated with maintenance margin included
 5. **Break-Even**: Only trigger when ROI exceeds fee-adjusted threshold
 6. **Trailing**: Three modes available - Staircase, ATR-based, Dynamic
+7. **Order Safety**: All exit orders MUST use `reduceOnly: true` (enforced by OrderValidator)
+8. **Precision**: All financial calculations MUST use DecimalMath to avoid floating-point errors
 
 ### Risk Management Defaults
 
@@ -247,13 +377,64 @@ Signals range from -120 (Strong Sell) to +120 (Strong Buy):
 
 ### Testing Changes
 
-1. Start server: `npm start`
-2. Open dashboard: `http://localhost:3001`
-3. Monitor console logs for errors
-4. Check WebSocket connection status
-5. Test with real market data (requires API keys)
+1. **Run automated tests**: `npm test`
+   - Runs all tests in the `tests/` directory using Node.js test runner
+   - Includes unit tests, property-based tests, and integration tests
+   - Test files:
+     - `tradeMath.test.js`: Basic formula tests
+     - `tradeMath.property.test.js`: Property-based tests with fast-check
+     - `configValidation.test.js`: Config schema validation tests
+     - `pingBudgetManager.test.js`: Rate limit manager tests
+     - `signal-generator.test.js`: Signal generation tests
+     - `stopStateMachine.test.js`: Stop order state machine tests
+     - And more...
+
+2. **Run specific tests**: `npm run test:rate-limit`
+   - Runs only rate limit manager tests
+
+3. **Manual testing**:
+   - Start server: `npm start`
+   - Open dashboard: `http://localhost:3001`
+   - Monitor console logs for errors
+   - Check WebSocket connection status
+   - Test with real market data (requires API keys)
+
+4. **Demo mode**: Set `DEMO_MODE=true` in `.env`
+   - Enables synthetic market data
+   - Mock trading client (no real orders)
+   - Safe for local testing without API keys
 
 ### Common Tasks
+
+**Use DecimalMath for financial calculations (v3.5.2+):**
+```javascript
+// Import the module
+const DecimalMath = require('./src/lib/DecimalMath');
+
+// Use for all financial calculations
+const marginUsed = DecimalMath.calculateMarginUsed(accountBalance, positionPercent);
+const positionValue = DecimalMath.calculatePositionValue(marginUsed, leverage);
+const lotSize = DecimalMath.calculateLotSize(positionValue, entryPrice, multiplier);
+
+// For P&L calculations
+const pnl = DecimalMath.calculateUnrealizedPnL(side, entryPrice, currentPrice, size, multiplier);
+const roi = DecimalMath.calculateROI(pnl, marginUsed);
+```
+
+**Validate orders before placement (v3.5.2+):**
+```javascript
+// Import the validator
+const OrderValidator = require('./src/lib/OrderValidator');
+
+// Validate exit orders (throws on failure)
+OrderValidator.validateExitOrder(orderParams);
+
+// Or sanitize and enforce reduceOnly
+const safeParams = OrderValidator.sanitize(orderParams, 'exit');
+
+// Validate stop orders
+OrderValidator.validateStopOrder(stopOrderParams);
+```
 
 **Add a new technical indicator:**
 ```javascript
@@ -285,9 +466,11 @@ async executeNewOrderType() {
 
 1. **API Keys**: NEVER commit `.env` file. Use environment variables.
 2. **Input Validation**: Validate all user inputs before processing
-3. **Order Validation**: Double-check calculations before placing orders
-4. **Rate Limiting**: Respect API rate limits to avoid bans
-5. **Error Messages**: Don't expose sensitive information in logs
+3. **Order Validation**: Use OrderValidator to enforce reduceOnly on all exit orders (v3.5.2+)
+4. **Secure Logging**: Use SecureLogger to redact API keys/secrets from logs (v3.5.2+)
+5. **Rate Limiting**: Use PingBudgetManager to respect API rate limits and avoid bans (v3.5.2+)
+6. **Error Messages**: Don't expose sensitive information in logs
+7. **Config Validation**: All config values are validated at startup (v3.5.2+)
 
 ## Deployment
 
@@ -311,8 +494,12 @@ async executeNewOrderType() {
 - **PRESERVE** the retry queue mechanism for critical operations
 - **MAINTAIN** the WebSocket communication protocol
 - **FOLLOW** the existing error handling patterns
-- **USE** the TradeMath utility functions instead of reimplementing calculations
+- **USE** DecimalMath for all financial calculations (v3.5.2+) to avoid floating-point errors
+- **USE** OrderValidator for all order placements (v3.5.2+) to enforce safety
+- **USE** ConfigSchema validation for all config changes (v3.5.2+)
 - **RESPECT** the separation between server and client code
+- **WRITE** tests for all new features using the Node.js test runner
+- **RUN** `npm test` before committing changes
 
 ## Resources
 
@@ -322,12 +509,38 @@ async executeNewOrderType() {
 
 ## Version History
 
-- **v3.5.0** (Current): Fee-adjusted break-even, accurate liquidation, slippage buffer, API retry queue
+- **v3.5.2** (Current): 
+  - Precision-safe financial math with decimal.js
+  - Order validation layer with reduceOnly enforcement
+  - Config schema validation at startup
+  - Property-based tests with fast-check
+  - Stop order state machine
+  - Secure logging with credential redaction
+  - Event bus for hot/cold path architecture
+  - Dual-timeframe screener
+  - Research and optimization modules
+  - Comprehensive test suite
+
+- **v3.5.1**:
+  - Demo mode with synthetic market data
+  - Test-friendly startup controls
+  - Automated formula tests
+  - GitHub Actions CI pipeline
+
+- **v3.5.0**: 
+  - Fee-adjusted break-even calculation
+  - Accurate liquidation price formula
+  - Slippage buffer on stop orders
+  - API retry queue with exponential backoff
+  - ROI-based SL/TP with inverse leverage scaling
+  - Volatility-based auto-leverage
+  - Enhanced trailing stop algorithms
+
 - **v3.4.2**: ROI-based SL/TP, confirmation modal
 - **v3.4.1**: Leverage-adjusted SL/TP
 - **v3.4.0**: Dollar-based position sizing
 
 ---
 
-**Last Updated**: December 2025
+**Last Updated**: January 2026
 **Maintained By**: Development Team
