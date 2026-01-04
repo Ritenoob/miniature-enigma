@@ -255,6 +255,7 @@ describe('Telemetry Feed', () => {
     await new Promise((resolve, reject) => {
       const unsubscribe = telemetryFeed.stream((update) => {
         try {
+          assert.ok(update);
           updateCount++;
           if (updateCount === 2) {
             unsubscribe();
