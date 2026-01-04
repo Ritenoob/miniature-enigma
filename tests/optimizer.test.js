@@ -248,7 +248,7 @@ describe('Telemetry Feed', () => {
     assert.strictEqual(telemetryFeed.getAllMetrics().length, 2);
   });
 
-  test('streams updates', async (t) => {
+  test('streams updates', async () => {
     telemetryFeed.clearAll();
     
     let updateCount = 0;
