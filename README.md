@@ -29,6 +29,15 @@ This version implements **production-grade reliability and precision** with deci
 | **Enhanced Trailing Stops** | Three modes: Staircase, ATR-Based, and Dynamic |
 | **Net P&L Display** | Shows both gross and net profit/loss after fees |
 
+### ⭐ NEW in Latest Update: Complete Research Infrastructure
+
+| Component | Description |
+|-----------|-------------|
+| **Indicator Engines** | 7 institutional-grade incremental indicators (RSI, MACD, Williams %R, AO, KDJ, OBV, ADX) |
+| **Backtest Engine** | Deterministic backtesting with walk-forward validation |
+| **Optimizer** | Multi-objective strategy optimization with Pareto front ranking |
+| **Research Scripts** | Complete workflow: data fetching → backtesting → optimization → reporting |
+
 ---
 
 ## 🏗️ Architecture (V3.5.2)
@@ -336,6 +345,154 @@ All exit orders use `reduceOnly: true` to prevent accidental position reversal.
 ### Rate Limit Handling
 - 5-second cooldown on rate limit errors
 - Automatic retry with backoff
+
+---
+
+## 📁 Complete File Structure
+
+```
+/
+├── server.js                     # Main backend server
+├── index.html                    # Frontend dashboard
+├── signal-weights.js             # Signal configuration
+├── screenerConfig.js             # Screener configuration
+├── screenerEngine.js             # Dual-timeframe screener
+│
+├── src/                          # Core library modules
+│   ├── lib/                      # Trading logic libraries
+│   │   ├── DecimalMath.js        # Precision-safe math
+│   │   ├── OrderValidator.js     # Order validation
+│   │   ├── ConfigSchema.js       # Config validation
+│   │   ├── SignalGenerator.js    # Signal generation
+│   │   ├── PingBudgetManager.js  # Rate limit management
+│   │   ├── SecureLogger.js       # Secure logging
+│   │   ├── EventBus.js           # Event bus
+│   │   ├── StopOrderStateMachine.js
+│   │   ├── StopReplaceCoordinator.js
+│   │   └── index.js
+│   │
+│   ├── marketdata/               # Market data providers
+│   │   ├── OHLCProvider.js
+│   │   └── index.js
+│   │
+│   └── optimizer/                # Live optimization
+│       ├── ExecutionSimulator.js
+│       ├── LiveOptimizerController.js
+│       ├── TrailingStopPolicy.js
+│       └── index.js
+│
+├── indicatorEngines/             # ⭐ NEW: Incremental indicators
+│   ├── RSIIndicator.js           # Wilder RSI
+│   ├── MACDIndicator.js          # EMA-based MACD
+│   ├── WilliamsRIndicator.js     # Williams %R
+│   ├── AwesomeOscillator.js      # Awesome Oscillator
+│   ├── KDJIndicator.js           # KDJ (Stochastic)
+│   ├── OBVIndicator.js           # On-Balance Volume
+│   ├── ADXIndicator.js           # Average Directional Index
+│   └── index.js
+│
+├── research/                     # ⭐ NEW: Research infrastructure
+│   ├── data/                     # Historical data storage
+│   ├── backtest/                 # Backtesting engine
+│   │   ├── engine.js             # Core backtest engine
+│   │   ├── walkforward.js        # Walk-forward validation
+│   │   ├── metrics.js            # Performance metrics
+│   │   └── index.js
+│   │
+│   ├── optimize/                 # Optimization engine
+│   │   └── optimizer.js          # Multi-objective optimizer
+│   │
+│   ├── forward/                  # Live forward testing
+│   │   ├── shadow-runner.js      # Shadow trading
+│   │   ├── dom-collector.js      # DOM data collection
+│   │   └── live-metrics.js       # Latency metrics
+│   │
+│   ├── lib/signals/              # Extended signal generators
+│   │   └── extended-generator.js
+│   │
+│   ├── configs/                  # Strategy configs (output)
+│   ├── reports/                  # Performance reports (output)
+│   │
+│   └── scripts/                  # Utility scripts
+│       ├── fetch-ohlcv.js        # Data fetching
+│       ├── run-backtest.js       # Run backtest
+│       ├── run-optimizer.js      # Run optimizer
+│       ├── run-shadow.js         # Shadow testing
+│       └── generate-report.js    # Report generation
+│
+├── tests/                        # Test suite
+│   ├── tradeMath.test.js
+│   ├── tradeMath.property.test.js
+│   ├── configValidation.test.js
+│   ├── pingBudgetManager.test.js
+│   ├── signal-generator.test.js
+│   ├── execution-simulator.test.js
+│   ├── live-optimizer.test.js
+│   ├── indicatorEngines/         # ⭐ NEW
+│   │   └── indicators.test.js
+│   └── ... (other tests)
+│
+├── docs/                         # Documentation
+│   ├── OPTIMIZER.md
+│   ├── SIGNAL_CONFIG.md
+│   ├── TESTING.md
+│   ├── OHLC_PROVIDER.md
+│   ├── INDICATORS.md             # ⭐ NEW
+│   ├── BACKTEST.md               # ⭐ NEW
+│   └── OPTIMIZATION.md           # ⭐ NEW
+│
+├── ARCHITECTURE.md               # ⭐ NEW: System architecture
+├── package.json                  # Dependencies & scripts
+├── .env.example                  # Environment template
+└── README.md                     # Main documentation
+```
+
+---
+
+## 🔬 Research & Optimization Workflow
+
+### 1. Fetch Historical Data
+
+```bash
+npm run research:fetch-ohlcv
+```
+
+Fetches 30 days of OHLCV data for configured symbols and timeframes from KuCoin Futures API.
+
+### 2. Run Backtest
+
+```bash
+npm run research:backtest
+```
+
+Runs deterministic backtesting with walk-forward validation. Produces comprehensive metrics.
+
+### 3. Optimize Strategy
+
+```bash
+npm run research:optimize
+```
+
+Runs multi-objective optimization to find best configurations:
+- Stage A: Random screening (100 configs)
+- Stage B: Refinement of top 20%
+- Outputs: Top 20 configs, Pareto front, CSV leaderboard
+
+### 4. Generate Report
+
+```bash
+npm run research:report
+```
+
+Generates HTML performance report from backtest/optimization results.
+
+### 5. Shadow Testing
+
+```bash
+npm run research:shadow
+```
+
+Runs live forward testing in shadow mode (no real orders). Tests configs against live data.
 
 ---
 
