@@ -8,7 +8,7 @@
     "dev": "node --watch server.js",
     "test": "node --test",
     "test:rate-limit": "node --test tests/pingBudgetManager*.test.js",
-    "test:indicators": "node --test tests/indicatorEngines*.test.js",
+    "test:indicators": "node --test tests/indicatorEngines/indicators.test.js",
     "research:shadow": "node research/scripts/run-shadow.js",
     "research:fetch-ohlcv": "node research/scripts/fetch-ohlcv.js",
     "research:backtest": "node research/scripts/run-backtest.js",
