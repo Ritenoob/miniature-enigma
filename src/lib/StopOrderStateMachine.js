@@ -7,7 +7,7 @@ const StopReplaceCoordinator = require('./StopReplaceCoordinator');
 /**
  * State Machine for managing stop order updates safely
  * Now uses StopReplaceCoordinator for enhanced protection
- * 
+ *
  * States:
  * - PROTECTED: Position has an active stop order
  * - UPDATING: Stop order is being replaced
@@ -21,10 +21,10 @@ class StopOrderStateMachine {
     this.api = api;
     this.broadcastLog = broadcastLog;
     this.broadcastAlert = broadcastAlert;
-    
+
     // Use StopReplaceCoordinator for safe replacements
     this.coordinator = new StopReplaceCoordinator(api, broadcastLog, broadcastAlert);
-    
+
     this.state = 'PROTECTED';
     this.currentOrderId = null;
     this.pendingOrderId = null;
@@ -49,13 +49,13 @@ class StopOrderStateMachine {
 
     try {
       this.broadcastLog('info', `[${this.positionManager.symbol}] Updating stop order to ${newStopPrice.toFixed(2)}`);
-      
+
       // Set the current order ID in coordinator for cancel-replace flow
       this.coordinator.currentOrderId = this.currentOrderId;
-      
+
       // Use coordinator for safe replacement
       const result = await this.coordinator.replaceStopOrder(
-        this.positionManager.symbol, 
+        this.positionManager.symbol,
         stopParams
       );
 
@@ -80,7 +80,7 @@ class StopOrderStateMachine {
 
     } catch (error) {
       this.broadcastLog('error', `[${this.positionManager.symbol}] Stop update failed: ${error.message}`);
-      
+
       // Coordinator handles retries and emergency close internally
       // If we reach here, it means emergency close was executed or max retries exceeded
       if (error.message.includes('emergency close executed')) {
@@ -91,7 +91,7 @@ class StopOrderStateMachine {
         // Don't trigger recovery here - coordinator already handled retries
         // Recovery is only for backward compatibility or special cases
       }
-      
+
       this.isProcessing = false;
       throw error;
     }
@@ -112,18 +112,18 @@ class StopOrderStateMachine {
     while (this.retryCount < this.maxRetries && this.state === 'RECOVERING') {
       this.retryCount++;
       const delay = 1000 * Math.pow(2, this.retryCount); // Exponential backoff
-      
+
       this.broadcastLog('info', `[${this.positionManager.symbol}] Recovery attempt ${this.retryCount}/${this.maxRetries} in ${delay}ms`);
       await this.sleep(delay);
 
       try {
         const order = await this.api.placeStopOrder(stopParams);
-        
+
         if (order.data && order.data.orderId) {
           this.currentOrderId = order.data.orderId;
           this.state = 'PROTECTED';
           this.retryCount = 0;
-          
+
           this.broadcastAlert('recovery', `✓ Stop order recovered for ${this.positionManager.symbol}`);
           this.broadcastLog('success', `[${this.positionManager.symbol}] Stop order recovered: ${this.currentOrderId}`);
           return;
@@ -136,7 +136,7 @@ class StopOrderStateMachine {
     // Critical failure - notify user
     this.state = 'CRITICAL';
     const criticalMsg = `⚠️ CRITICAL: ${this.positionManager.symbol} stop order failed after ${this.maxRetries} attempts. Manual intervention required!`;
-    
+
     this.broadcastAlert('critical', criticalMsg);
     this.broadcastLog('error', `[${this.positionManager.symbol}] ${criticalMsg}`);
   }
@@ -164,7 +164,7 @@ class StopOrderStateMachine {
       this.currentOrderId = savedState.currentOrderId || null;
       this.pendingOrderId = savedState.pendingOrderId || null;
       this.retryCount = savedState.retryCount || 0;
-      
+
       // Restore coordinator state
       if (savedState.coordinatorState && savedState.coordinatorState.currentOrderId) {
         this.coordinator.currentOrderId = savedState.coordinatorState.currentOrderId;

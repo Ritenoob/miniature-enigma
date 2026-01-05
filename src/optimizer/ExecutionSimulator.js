@@ -20,7 +20,7 @@ const FILL_MODEL = {
 class ExecutionSimulator {
   /**
    * Simulate entry fill for a paper trade
-   * 
+   *
    * @param {Object} params - Entry parameters
    * @param {number} params.accountBalance - Total account balance in USDT
    * @param {number} params.positionSizePercent - Position size as % of balance (for margin)
@@ -34,7 +34,7 @@ class ExecutionSimulator {
    * @param {string} params.fillModel - 'taker' or 'probabilistic_limit'
    * @param {number} params.limitFillProbability - Probability of limit fill (0-1) for probabilistic model
    * @param {number} params.multiplier - Contract multiplier (default 1)
-   * 
+   *
    * @returns {Object} Entry execution result
    */
   static simulateEntry(params) {
@@ -67,7 +67,7 @@ class ExecutionSimulator {
     if (fillModel === FILL_MODEL.PROBABILISTIC_LIMIT && limitPrice) {
       // Simulate limit order fill probability
       const filled = Math.random() < limitFillProbability;
-      
+
       if (filled) {
         // Limit filled at specified price with maker fee
         entryFillPrice = limitPrice;
@@ -111,11 +111,11 @@ class ExecutionSimulator {
 
   /**
    * Mark position to market - calculate unrealized PnL
-   * 
+   *
    * @param {Object} position - Position state from simulateEntry
    * @param {number} currentPrice - Current market price
    * @param {number} fundingFees - Accumulated funding fees (optional)
-   * 
+   *
    * @returns {Object} Mark-to-market result
    */
   static markToMarket(position, currentPrice, fundingFees = 0) {
@@ -124,7 +124,7 @@ class ExecutionSimulator {
       size,
       side,
       marginUsed,
-      effectiveNotional,
+      effectiveNotional: _effectiveNotional,
       entryFee,
       multiplier = 1
     } = position;
@@ -153,14 +153,14 @@ class ExecutionSimulator {
 
   /**
    * Simulate exit fill for closing a position
-   * 
+   *
    * @param {Object} position - Position state from simulateEntry
    * @param {number} exitPrice - Exit trigger price (SL/TP)
    * @param {number} takerFee - Taker fee rate for exit
    * @param {number} slippagePercent - Slippage buffer %
    * @param {number} fundingFees - Accumulated funding fees
    * @param {string} exitReason - 'stop_loss', 'take_profit', or 'manual'
-   * 
+   *
    * @returns {Object} Exit execution result with realized PnL
    */
   static simulateExit(position, exitPrice, takerFee = 0.0006, slippagePercent = 0.02, fundingFees = 0, exitReason = 'manual') {
@@ -213,7 +213,7 @@ class ExecutionSimulator {
 
   /**
    * Apply slippage to price based on direction
-   * 
+   *
    * @param {number} price - Base price
    * @param {string} side - 'long' or 'short'
    * @param {number} slippagePercent - Slippage as percentage (e.g., 0.02 for 2%)
@@ -244,7 +244,7 @@ class ExecutionSimulator {
   /**
    * Calculate break-even price for a position
    * Accounts for entry fee, exit fee, and slippage
-   * 
+   *
    * @param {Object} position - Position state
    * @param {number} exitFeeRate - Exit fee rate
    * @param {number} slippagePercent - Slippage buffer %
@@ -272,7 +272,7 @@ class ExecutionSimulator {
 
   /**
    * Validate simulation parameters
-   * 
+   *
    * @param {Object} params - Parameters to validate
    * @throws {Error} If parameters are invalid
    */

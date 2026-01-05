@@ -1,6 +1,6 @@
 /**
  * PingBudgetManager - Rate limit compliance for KuCoin API
- * 
+ *
  * Implements:
  * - WebSocket heartbeat management
  * - Adaptive token bucket for REST API rate limiting
@@ -30,19 +30,19 @@ class AdaptiveTokenBucket {
   static MAX_DEGRADE_FACTOR = 0.5;
   static RECOVERY_INTERVAL_MS = 60000;
   static RECOVERY_STEP = 0.05;
-  
+
   constructor(config = {}) {
     this.quotaPerWindow = config.quotaPerWindow || 2000;  // VIP0 default
     this.windowMs = config.windowMs || 30000;  // 30 seconds
     this.utilizationTarget = config.utilizationTarget || AdaptiveTokenBucket.DEFAULT_UTILIZATION;
     this.headroom = config.headroom || 0.30;  // 30% reserved
-    
+
     this.tokens = this.quotaPerWindow * this.utilizationTarget;
     this.lastRefill = Date.now();
     this.consecutive429s = 0;
     this.lastRecoveryCheck = Date.now();
   }
-  
+
   // Priority classes
   static PRIORITY = {
     CRITICAL: 0,  // cancel/replace risk actions
@@ -50,14 +50,14 @@ class AdaptiveTokenBucket {
     MEDIUM: 2,    // positions/orders sync
     LOW: 3        // health pings
   };
-  
+
   /**
    * Refill tokens based on time elapsed
    */
   refill() {
     const now = Date.now();
     const elapsed = now - this.lastRefill;
-    
+
     if (elapsed >= this.windowMs) {
       // Full window passed, refill completely
       this.tokens = this.quotaPerWindow * this.utilizationTarget;
@@ -72,7 +72,7 @@ class AdaptiveTokenBucket {
       this.lastRefill = now;
     }
   }
-  
+
   /**
    * Check if tokens are available for a request
    */
@@ -80,7 +80,7 @@ class AdaptiveTokenBucket {
     this.refill();
     return this.tokens >= count;
   }
-  
+
   /**
    * Consume tokens for a request
    */
@@ -92,43 +92,43 @@ class AdaptiveTokenBucket {
     }
     return false;
   }
-  
+
   /**
    * On 429: immediately degrade
    */
   handleRateLimitError() {
     this.consecutive429s++;
     const degradeFactor = Math.min(
-      AdaptiveTokenBucket.MAX_DEGRADE_FACTOR, 
+      AdaptiveTokenBucket.MAX_DEGRADE_FACTOR,
       this.consecutive429s * AdaptiveTokenBucket.DEGRADE_STEP
     );
     this.utilizationTarget = Math.max(
-      AdaptiveTokenBucket.MIN_UTILIZATION, 
+      AdaptiveTokenBucket.MIN_UTILIZATION,
       AdaptiveTokenBucket.DEFAULT_UTILIZATION - degradeFactor
     );
-    
+
     // Reset tokens to new target
     this.tokens = Math.min(this.tokens, this.quotaPerWindow * this.utilizationTarget);
   }
-  
+
   /**
    * Gradual recovery after sustained success
    */
   recover() {
     const now = Date.now();
     const timeSinceLastCheck = now - this.lastRecoveryCheck;
-    
+
     // Check every 60 seconds
     if (timeSinceLastCheck >= AdaptiveTokenBucket.RECOVERY_INTERVAL_MS && this.consecutive429s > 0) {
       this.consecutive429s = Math.max(0, this.consecutive429s - 1);
       this.utilizationTarget = Math.min(
-        AdaptiveTokenBucket.DEFAULT_UTILIZATION, 
+        AdaptiveTokenBucket.DEFAULT_UTILIZATION,
         this.utilizationTarget + AdaptiveTokenBucket.RECOVERY_STEP
       );
       this.lastRecoveryCheck = now;
     }
   }
-  
+
   /**
    * Get current bucket state
    */
@@ -151,22 +151,22 @@ class Histogram {
     this.values = [];
     this.maxSize = maxSize;
   }
-  
+
   record(value) {
     this.values.push(value);
     if (this.values.length > this.maxSize) {
       this.values.shift();
     }
   }
-  
+
   percentile(p) {
     if (this.values.length === 0) return 0;
-    
+
     const sorted = [...this.values].sort((a, b) => a - b);
     const index = Math.ceil((p / 100) * sorted.length) - 1;
     return sorted[Math.max(0, index)];
   }
-  
+
   mean() {
     if (this.values.length === 0) return 0;
     return this.values.reduce((a, b) => a + b, 0) / this.values.length;
@@ -179,9 +179,9 @@ class Histogram {
 class PingBudgetManager extends EventEmitter {
   constructor(config = {}) {
     super();
-    
+
     this.bucket = new AdaptiveTokenBucket(config);
-    
+
     // WebSocket state
     this.wsConnected = false;
     this.reconnectAttempts = 0;
@@ -190,7 +190,7 @@ class PingBudgetManager extends EventEmitter {
     this.lastPong = null;
     this.pingTimer = null;
     this.pongTimer = null;
-    
+
     // Metrics
     this.lagHistogram = new Histogram(1000);
     this.jitterStats = {
@@ -201,15 +201,15 @@ class PingBudgetManager extends EventEmitter {
     };
     this.lastMessageTime = null;
     this.rateLimitEvents = [];
-    
+
     // Request queue
     this.requestQueue = [];
     this.processing = false;
-    
+
     // Event loop monitoring
     this.startEventLoopMonitoring();
   }
-  
+
   /**
    * Monitor event loop lag
    */
@@ -222,7 +222,7 @@ class PingBudgetManager extends EventEmitter {
       });
     }, 1000);
   }
-  
+
   /**
    * Stop event loop monitoring
    */
@@ -232,7 +232,7 @@ class PingBudgetManager extends EventEmitter {
       this.monitorInterval = null;
     }
   }
-  
+
   /**
    * Schedule a REST call with priority
    */
@@ -240,11 +240,11 @@ class PingBudgetManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.requestQueue.push({ priority, fn, resolve, reject });
       this.requestQueue.sort((a, b) => a.priority - b.priority);
-      
+
       this.processQueue();
     });
   }
-  
+
   /**
    * Process the request queue
    */
@@ -252,23 +252,23 @@ class PingBudgetManager extends EventEmitter {
     if (this.processing || this.requestQueue.length === 0) {
       return;
     }
-    
+
     this.processing = true;
-    
+
     while (this.requestQueue.length > 0) {
       const request = this.requestQueue[0];
-      
+
       // Check if we can consume a token
       if (!this.bucket.canConsume(1)) {
         // Wait for refill
         await new Promise(resolve => setTimeout(resolve, 100));
         continue;
       }
-      
+
       // Consume token and execute request
       this.bucket.consume(1);
       this.requestQueue.shift();
-      
+
       try {
         const result = await request.fn();
         request.resolve(result);
@@ -279,7 +279,7 @@ class PingBudgetManager extends EventEmitter {
         }
         request.reject(error);
       }
-      
+
       // Allow recovery check
       this.bucket.recover();
     }
@@ -294,7 +294,7 @@ class PingBudgetManager extends EventEmitter {
       setImmediate(() => this.processQueue());
     }
   }
-  
+
   /**
    * Check if LOW priority health sampling is allowed
    */
@@ -303,7 +303,7 @@ class PingBudgetManager extends EventEmitter {
     const state = this.bucket.getState();
     return state.tokens > (state.capacity * 0.3);
   }
-  
+
   /**
    * Record a rate limit event (429 response)
    */
@@ -312,42 +312,42 @@ class PingBudgetManager extends EventEmitter {
       timestamp: Date.now(),
       consecutive: this.bucket.consecutive429s + 1
     };
-    
+
     this.rateLimitEvents.push(event);
     if (this.rateLimitEvents.length > 100) {
       this.rateLimitEvents.shift();
     }
-    
+
     this.bucket.handleRateLimitError();
     this.emit('rateLimitError', event);
   }
-  
+
   /**
    * Record message jitter for WebSocket
    */
   recordMessageJitter(timestamp) {
     if (this.lastMessageTime) {
       const jitter = Math.abs(timestamp - this.lastMessageTime);
-      
+
       this.jitterStats.samples.push(jitter);
       if (this.jitterStats.samples.length > this.jitterStats.maxSize) {
         this.jitterStats.samples.shift();
       }
-      
+
       // Calculate mean and stddev
       const n = this.jitterStats.samples.length;
       if (n > 0) {
         const mean = this.jitterStats.samples.reduce((a, b) => a + b, 0) / n;
         const variance = this.jitterStats.samples.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / n;
-        
+
         this.jitterStats.mean = mean;
         this.jitterStats.stddev = Math.sqrt(variance);
       }
     }
-    
+
     this.lastMessageTime = timestamp;
   }
-  
+
   /**
    * Calculate effective staleness (time since last message)
    */
@@ -355,24 +355,24 @@ class PingBudgetManager extends EventEmitter {
     if (!this.lastMessageTime) return 0;
     return Date.now() - this.lastMessageTime;
   }
-  
+
   /**
    * Start WebSocket heartbeat
    */
   startWebSocketHeartbeat(ws) {
     this.stopWebSocketHeartbeat();
-    
+
     this.pingTimer = setInterval(() => {
       if (this.wsConnected && ws.readyState === 1) {
         this.lastPing = Date.now();
-        
+
         // Set timeout for pong
         this.pongTimer = setTimeout(() => {
           // No pong received, connection might be stale
           this.emit('heartbeatTimeout');
           this.wsConnected = false;
         }, WS_CONFIG.pingTimeout);
-        
+
         // Send ping
         try {
           ws.ping();
@@ -382,25 +382,25 @@ class PingBudgetManager extends EventEmitter {
       }
     }, WS_CONFIG.pingInterval);
   }
-  
+
   /**
    * Handle WebSocket pong
    */
   handleWebSocketPong() {
     this.lastPong = Date.now();
-    
+
     if (this.pongTimer) {
       clearTimeout(this.pongTimer);
       this.pongTimer = null;
     }
-    
+
     // Record latency
     if (this.lastPing) {
       const latency = this.lastPong - this.lastPing;
       this.lagHistogram.record(latency);
     }
   }
-  
+
   /**
    * Stop WebSocket heartbeat
    */
@@ -409,49 +409,49 @@ class PingBudgetManager extends EventEmitter {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
-    
+
     if (this.pongTimer) {
       clearTimeout(this.pongTimer);
       this.pongTimer = null;
     }
   }
-  
+
   /**
    * Handle WebSocket reconnect
    */
   handleReconnect() {
     this.reconnectAttempts++;
     this.reconnects++;
-    
+
     if (this.reconnectAttempts >= WS_CONFIG.maxReconnectAttempts) {
       this.emit('maxReconnectsReached');
       return null;
     }
-    
+
     const backoffIndex = Math.min(this.reconnectAttempts - 1, WS_CONFIG.reconnectBackoff.length - 1);
     return WS_CONFIG.reconnectBackoff[backoffIndex];
   }
-  
+
   /**
    * Reset reconnect counter on successful connection
    */
   resetReconnectAttempts() {
     this.reconnectAttempts = 0;
   }
-  
+
   /**
    * Export metrics
    */
   exportMetrics() {
     return this.getMetrics();
   }
-  
+
   /**
    * Get current metrics
    */
   getMetrics() {
     const bucketState = this.bucket.getState();
-    
+
     return {
       eventLoopLagP95: this.lagHistogram.percentile(95),
       eventLoopLagP99: this.lagHistogram.percentile(99),
@@ -470,7 +470,7 @@ class PingBudgetManager extends EventEmitter {
       lastPong: this.lastPong
     };
   }
-  
+
   /**
    * Cleanup
    */

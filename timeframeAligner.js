@@ -17,13 +17,13 @@ function isBearishRSI(rsi, params) {
   return rsi > overbought;
 }
 
-function isBullishMACD(macd, params) {
+function isBullishMACD(macd, _params) {
   if (macd == null) return false;
   // Using histogram if provided
   return macd.histogram != null ? macd.histogram > 0 : macd.macd > macd.signal;
 }
 
-function isBearishMACD(macd, params) {
+function isBearishMACD(macd, _params) {
   if (macd == null) return false;
   return macd.histogram != null ? macd.histogram < 0 : macd.macd < macd.signal;
 }
@@ -40,12 +40,12 @@ function isBearishWilliamsR(wr, params) {
   return wr > overboughtLevel;
 }
 
-function isBullishAO(ao, params) {
+function isBullishAO(ao, _params) {
   if (ao == null) return false;
   return ao > 0;
 }
 
-function isBearishAO(ao, params) {
+function isBearishAO(ao, _params) {
   if (ao == null) return false;
   return ao < 0;
 }

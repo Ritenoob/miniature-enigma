@@ -8,7 +8,7 @@ class RSIIndicator {
     } = options;
 
     if (period <= 0) {
-      throw new Error("RSI period must be > 0");
+      throw new Error('RSI period must be > 0');
     }
 
     this.period = period;
@@ -62,14 +62,14 @@ class RSIIndicator {
    */
   update(input) {
     const close =
-      typeof input === "number"
+      typeof input === 'number'
         ? input
-        : input && typeof input.close === "number"
-        ? input.close
-        : null;
+        : input && typeof input.close === 'number'
+          ? input.close
+          : null;
 
     if (close === null) {
-      throw new Error("RSI update requires a close price");
+      throw new Error('RSI update requires a close price');
     }
 
     if (this.prevClose === null) {

@@ -22,7 +22,7 @@ class OHLCProvider {
       cacheTTL: config.cacheTTL || 60000, // 1 minute default cache
       maxRetries: config.maxRetries || 3
     };
-    
+
     this.cache = new Map();
     this.lastRequestTime = 0;
     this.requestQueue = [];
@@ -30,22 +30,22 @@ class OHLCProvider {
 
   /**
    * Get OHLC candles from configured source
-   * 
+   *
    * @param {Object} params - Query parameters
    * @param {string} params.symbol - Trading pair symbol (e.g., 'BTCUSDT', 'XBTUSDTM')
    * @param {string} params.timeframe - Candle interval ('1m', '5m', '15m', '1h', '4h', '1d')
    * @param {number} params.start - Start timestamp (optional)
    * @param {number} params.end - End timestamp (optional)
    * @param {number} params.limit - Max number of candles (default: 500)
-   * 
+   *
    * @returns {Promise<Array>} Array of candle objects
    */
   async getCandles(params) {
-    const { symbol, timeframe, start, end, limit = 500 } = params;
-    
+    const { symbol: _symbol, timeframe: _timeframe, start: _start, end: _end, limit: _limit = 500 } = params;
+
     // Validate parameters
     this._validateParams(params);
-    
+
     // Check cache first
     if (this.config.cacheEnabled) {
       const cached = this._getFromCache(params);
@@ -53,10 +53,10 @@ class OHLCProvider {
         return cached;
       }
     }
-    
+
     // Rate limit protection
     await this._enforceRateLimit();
-    
+
     // Fetch from appropriate source
     let candles;
     switch (this.config.source) {
@@ -75,15 +75,15 @@ class OHLCProvider {
       default:
         throw new Error(`Unsupported OHLC source: ${this.config.source}`);
     }
-    
+
     // Normalize to standard format
     const normalized = this._normalizeCandles(candles, this.config.source);
-    
+
     // Cache result
     if (this.config.cacheEnabled) {
       this._setCache(params, normalized);
     }
-    
+
     return normalized;
   }
 
@@ -92,11 +92,11 @@ class OHLCProvider {
    * @private
    */
   async _fetchKuCoin(params) {
-    const { symbol, timeframe, start, end, limit } = params;
-    
+    const { symbol, timeframe, start, end, limit: _limit } = params;
+
     // Convert timeframe to KuCoin granularity (minutes)
     const granularity = this._convertTimeframeToMinutes(timeframe);
-    
+
     const url = 'https://api-futures.kucoin.com/api/v1/kline/query';
     const queryParams = {
       symbol: symbol,
@@ -104,13 +104,13 @@ class OHLCProvider {
       from: start ? Math.floor(start / 1000) : undefined,
       to: end ? Math.floor(end / 1000) : undefined
     };
-    
+
     try {
       const response = await axios.get(url, {
         params: queryParams,
         timeout: this.config.timeout
       });
-      
+
       if (response.data && response.data.code === '200000') {
         return response.data.data || [];
       } else {
@@ -127,7 +127,7 @@ class OHLCProvider {
    */
   async _fetchBinance(params) {
     const { symbol, timeframe, start, end, limit } = params;
-    
+
     const url = 'https://api.binance.com/api/v3/klines';
     const queryParams = {
       symbol: symbol,
@@ -136,13 +136,13 @@ class OHLCProvider {
       endTime: end,
       limit: Math.min(limit, 1000) // Binance max is 1000
     };
-    
+
     try {
       const response = await axios.get(url, {
         params: queryParams,
         timeout: this.config.timeout
       });
-      
+
       return response.data || [];
     } catch (error) {
       throw new Error(`Failed to fetch Binance candles: ${error.message}`);
@@ -155,15 +155,15 @@ class OHLCProvider {
    */
   async _fetchAlphaVantage(params) {
     const { symbol, timeframe } = params;
-    
+
     if (!this.config.apiKey) {
       throw new Error('Alpha Vantage requires API key');
     }
-    
+
     // Alpha Vantage function based on timeframe
     const func = timeframe.includes('d') ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
     const interval = timeframe.replace('m', 'min');
-    
+
     const url = 'https://www.alphavantage.co/query';
     const queryParams = {
       function: func,
@@ -172,13 +172,13 @@ class OHLCProvider {
       apikey: this.config.apiKey,
       outputsize: 'full'
     };
-    
+
     try {
       const response = await axios.get(url, {
         params: queryParams,
         timeout: this.config.timeout
       });
-      
+
       // Alpha Vantage returns nested time series
       const timeSeriesKey = Object.keys(response.data).find(k => k.includes('Time Series'));
       return response.data[timeSeriesKey] || {};
@@ -191,7 +191,7 @@ class OHLCProvider {
    * Fetch candles from local cache/database
    * @private
    */
-  async _fetchLocal(params) {
+  async _fetchLocal(_params) {
     // Placeholder for local data source
     // Could be SQLite, Redis, InfluxDB, or file system
     throw new Error('Local OHLC source not yet implemented. Override this method in subclass.');
@@ -205,7 +205,7 @@ class OHLCProvider {
     if (!candles || (Array.isArray(candles) && candles.length === 0)) {
       return [];
     }
-    
+
     switch (source) {
       case 'kucoin':
         return this._normalizeKuCoinCandles(candles);
@@ -275,10 +275,10 @@ class OHLCProvider {
     if (!matches) {
       throw new Error(`Invalid timeframe format: ${timeframe}`);
     }
-    
+
     const value = parseInt(matches[1]);
     const unit = matches[2];
-    
+
     switch (unit) {
       case 'm': return value;
       case 'h': return value * 60;
@@ -298,7 +298,7 @@ class OHLCProvider {
     if (!params.timeframe) {
       throw new Error('Timeframe is required');
     }
-    
+
     // Validate timeframe format
     if (!/^\d+[mhd]$/.test(params.timeframe)) {
       throw new Error('Timeframe must be in format: 1m, 5m, 1h, 4h, 1d, etc.');
@@ -312,12 +312,12 @@ class OHLCProvider {
   async _enforceRateLimit() {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-    
+
     if (timeSinceLastRequest < this.config.rateLimitDelay) {
       const delay = this.config.rateLimitDelay - timeSinceLastRequest;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
-    
+
     this.lastRequestTime = Date.now();
   }
 
@@ -328,11 +328,11 @@ class OHLCProvider {
   _getFromCache(params) {
     const key = this._getCacheKey(params);
     const cached = this.cache.get(key);
-    
+
     if (cached && Date.now() - cached.timestamp < this.config.cacheTTL) {
       return cached.data;
     }
-    
+
     return null;
   }
 
@@ -346,7 +346,7 @@ class OHLCProvider {
       data,
       timestamp: Date.now()
     });
-    
+
     // Cleanup old cache entries
     if (this.cache.size > 100) {
       const oldestKeys = Array.from(this.cache.keys()).slice(0, 20);

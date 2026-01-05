@@ -13,7 +13,7 @@ const DecimalMath = require('../lib/DecimalMath');
 class TrailingStopPolicy {
   /**
    * Calculate the next stop price based on current ROI and trailing parameters
-   * 
+   *
    * @param {Object} params - Trailing parameters
    * @param {string} params.side - 'long' or 'short'
    * @param {number} params.entryPrice - Entry price
@@ -25,7 +25,7 @@ class TrailingStopPolicy {
    * @param {number} params.exitFeeRate - Exit fee rate (e.g., 0.0006)
    * @param {Object} params.config - Configuration object with trailing settings
    * @param {boolean} params.breakEvenArmed - Whether break-even has been triggered
-   * 
+   *
    * @returns {Object} { newStopPrice, newLastROIStep, reason, breakEvenArmed }
    */
   static nextStop(params) {
@@ -65,7 +65,7 @@ class TrailingStopPolicy {
     if (!breakEvenArmed && currentROI >= breakEvenROI) {
       // Move stop to entry price + small buffer (for long) or entry - buffer (for short)
       const bufferPercent = breakEvenBuffer / leverage / 100; // Convert ROI buffer to price percent
-      
+
       if (side === 'long') {
         newStopPrice = entryPrice * (1 + bufferPercent);
         // Ensure we don't lower the stop
@@ -88,23 +88,23 @@ class TrailingStopPolicy {
         }
       }
     }
-    
+
     // Step 2: After break-even, implement aggressive trailing
     if (breakEvenArmed && trailingMode === 'staircase') {
       // Calculate how many steps we've progressed
       const roiProgress = currentROI - breakEvenROI;
       const currentStep = Math.floor(roiProgress / trailingStepPercent);
-      
+
       // If we've crossed a new step threshold
       if (currentStep > lastROIStep) {
         // Move stop closer by trailingMovePercent in favorable direction
         const movePercent = trailingMovePercent / 100;
-        
+
         if (side === 'long') {
           // For long, move stop up (toward current price)
           const priceIncrease = entryPrice * (currentROI / leverage / 100);
           const targetStop = entryPrice + (priceIncrease * (1 - movePercent));
-          
+
           // Only move stop up (never down)
           if (targetStop > currentStop) {
             newStopPrice = targetStop;
@@ -115,7 +115,7 @@ class TrailingStopPolicy {
           // For short, move stop down (toward current price)
           const priceDecrease = entryPrice * (currentROI / leverage / 100);
           const targetStop = entryPrice - (priceDecrease * (1 - movePercent));
-          
+
           // Only move stop down (never up) for short
           if (targetStop < currentStop) {
             newStopPrice = targetStop;
@@ -147,7 +147,7 @@ class TrailingStopPolicy {
 
   /**
    * Calculate initial stop loss price based on ROI target
-   * 
+   *
    * @param {string} side - 'long' or 'short'
    * @param {number} entryPrice - Entry price
    * @param {number} slROI - Stop loss ROI percentage
@@ -160,7 +160,7 @@ class TrailingStopPolicy {
 
   /**
    * Validate trailing parameters
-   * 
+   *
    * @param {Object} config - Configuration to validate
    * @throws {Error} If configuration is invalid
    */
@@ -196,7 +196,7 @@ class TrailingStopPolicy {
 
   /**
    * Get default trailing configuration from ConfigSchema defaults
-   * 
+   *
    * @returns {Object} Default configuration
    */
   static getDefaultConfig() {

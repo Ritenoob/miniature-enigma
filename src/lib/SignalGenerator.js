@@ -31,6 +31,8 @@ class SignalGenerator {
     }
 
     try {
+      // Resolve config path
+      this.configPath = configPath || path.resolve(__dirname, '../../signal-weights.js');
       let resolvedPath = null;
 
       // Priority 1: Explicit path parameter
@@ -75,13 +77,14 @@ class SignalGenerator {
       this.configPath = resolvedPath;
       delete require.cache[require.resolve(this.configPath)];
       const loadedConfig = require(this.configPath);
-      
+
       // Validate config
       this.validateConfig(loadedConfig);
-      
+
       // Store config and set active profile
       this.config = loadedConfig;
       this.activeProfile = loadedConfig.activeProfile || 'default';
+
       this.initialized = true;
       
       return true;
@@ -162,240 +165,240 @@ class SignalGenerator {
     // RSI (±weights.rsi.max points)
     if (indicators.rsi < weights.rsi.oversold) {
       score += weights.rsi.max;
-      breakdown.push({ 
-        indicator: 'RSI', 
-        value: indicators.rsi.toFixed(1), 
-        contribution: weights.rsi.max, 
-        reason: `Oversold (<${weights.rsi.oversold})`, 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'RSI',
+        value: indicators.rsi.toFixed(1),
+        contribution: weights.rsi.max,
+        reason: `Oversold (<${weights.rsi.oversold})`,
+        type: 'bullish'
       });
     } else if (indicators.rsi < weights.rsi.oversoldMild) {
       const contribution = Math.round(weights.rsi.max * 0.6); // 60% of max
       score += contribution;
-      breakdown.push({ 
-        indicator: 'RSI', 
-        value: indicators.rsi.toFixed(1), 
-        contribution, 
-        reason: 'Approaching oversold', 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'RSI',
+        value: indicators.rsi.toFixed(1),
+        contribution,
+        reason: 'Approaching oversold',
+        type: 'bullish'
       });
     } else if (indicators.rsi > weights.rsi.overbought) {
       score -= weights.rsi.max;
-      breakdown.push({ 
-        indicator: 'RSI', 
-        value: indicators.rsi.toFixed(1), 
-        contribution: -weights.rsi.max, 
-        reason: `Overbought (>${weights.rsi.overbought})`, 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'RSI',
+        value: indicators.rsi.toFixed(1),
+        contribution: -weights.rsi.max,
+        reason: `Overbought (>${weights.rsi.overbought})`,
+        type: 'bearish'
       });
     } else if (indicators.rsi > weights.rsi.overboughtMild) {
       const contribution = Math.round(weights.rsi.max * 0.6); // 60% of max
       score -= contribution;
-      breakdown.push({ 
-        indicator: 'RSI', 
-        value: indicators.rsi.toFixed(1), 
-        contribution: -contribution, 
-        reason: 'Approaching overbought', 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'RSI',
+        value: indicators.rsi.toFixed(1),
+        contribution: -contribution,
+        reason: 'Approaching overbought',
+        type: 'bearish'
       });
     } else {
-      breakdown.push({ 
-        indicator: 'RSI', 
-        value: indicators.rsi.toFixed(1), 
-        contribution: 0, 
-        reason: `Neutral (${weights.rsi.oversoldMild}-${weights.rsi.overboughtMild})`, 
-        type: 'neutral' 
+      breakdown.push({
+        indicator: 'RSI',
+        value: indicators.rsi.toFixed(1),
+        contribution: 0,
+        reason: `Neutral (${weights.rsi.oversoldMild}-${weights.rsi.overboughtMild})`,
+        type: 'neutral'
       });
     }
 
     // Williams %R (±weights.williamsR.max points)
     if (indicators.williamsR < weights.williamsR.oversold) {
       score += weights.williamsR.max;
-      breakdown.push({ 
-        indicator: 'Williams %R', 
-        value: indicators.williamsR.toFixed(1), 
-        contribution: weights.williamsR.max, 
-        reason: `Oversold (<${weights.williamsR.oversold})`, 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'Williams %R',
+        value: indicators.williamsR.toFixed(1),
+        contribution: weights.williamsR.max,
+        reason: `Oversold (<${weights.williamsR.oversold})`,
+        type: 'bullish'
       });
     } else if (indicators.williamsR > weights.williamsR.overbought) {
       score -= weights.williamsR.max;
-      breakdown.push({ 
-        indicator: 'Williams %R', 
-        value: indicators.williamsR.toFixed(1), 
-        contribution: -weights.williamsR.max, 
-        reason: `Overbought (>${weights.williamsR.overbought})`, 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'Williams %R',
+        value: indicators.williamsR.toFixed(1),
+        contribution: -weights.williamsR.max,
+        reason: `Overbought (>${weights.williamsR.overbought})`,
+        type: 'bearish'
       });
     } else {
-      breakdown.push({ 
-        indicator: 'Williams %R', 
-        value: indicators.williamsR.toFixed(1), 
-        contribution: 0, 
-        reason: 'Neutral', 
-        type: 'neutral' 
+      breakdown.push({
+        indicator: 'Williams %R',
+        value: indicators.williamsR.toFixed(1),
+        contribution: 0,
+        reason: 'Neutral',
+        type: 'neutral'
       });
     }
 
     // MACD (±weights.macd.max points)
     if (indicators.macd > 0 && indicators.macdHistogram > 0) {
       score += weights.macd.max;
-      breakdown.push({ 
-        indicator: 'MACD', 
-        value: indicators.macd.toFixed(2), 
-        contribution: weights.macd.max, 
-        reason: 'Bullish momentum', 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'MACD',
+        value: indicators.macd.toFixed(2),
+        contribution: weights.macd.max,
+        reason: 'Bullish momentum',
+        type: 'bullish'
       });
     } else if (indicators.macd < 0 && indicators.macdHistogram < 0) {
       score -= weights.macd.max;
-      breakdown.push({ 
-        indicator: 'MACD', 
-        value: indicators.macd.toFixed(2), 
-        contribution: -weights.macd.max, 
-        reason: 'Bearish momentum', 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'MACD',
+        value: indicators.macd.toFixed(2),
+        contribution: -weights.macd.max,
+        reason: 'Bearish momentum',
+        type: 'bearish'
       });
     } else {
-      breakdown.push({ 
-        indicator: 'MACD', 
-        value: indicators.macd.toFixed(2), 
-        contribution: 0, 
-        reason: 'Neutral/Crossover', 
-        type: 'neutral' 
+      breakdown.push({
+        indicator: 'MACD',
+        value: indicators.macd.toFixed(2),
+        contribution: 0,
+        reason: 'Neutral/Crossover',
+        type: 'neutral'
       });
     }
 
     // Awesome Oscillator (±weights.ao.max points)
     if (indicators.ao > 0) {
       score += weights.ao.max;
-      breakdown.push({ 
-        indicator: 'AO', 
-        value: indicators.ao.toFixed(2), 
-        contribution: weights.ao.max, 
-        reason: 'Positive momentum', 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'AO',
+        value: indicators.ao.toFixed(2),
+        contribution: weights.ao.max,
+        reason: 'Positive momentum',
+        type: 'bullish'
       });
     } else {
       score -= weights.ao.max;
-      breakdown.push({ 
-        indicator: 'AO', 
-        value: indicators.ao.toFixed(2), 
-        contribution: -weights.ao.max, 
-        reason: 'Negative momentum', 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'AO',
+        value: indicators.ao.toFixed(2),
+        contribution: -weights.ao.max,
+        reason: 'Negative momentum',
+        type: 'bearish'
       });
     }
 
     // EMA Trend (±weights.emaTrend.max points)
     if (indicators.ema50 > indicators.ema200) {
       score += weights.emaTrend.max;
-      breakdown.push({ 
-        indicator: 'EMA Trend', 
-        value: 'EMA50 > EMA200', 
-        contribution: weights.emaTrend.max, 
-        reason: 'Bullish trend (Golden Cross)', 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'EMA Trend',
+        value: 'EMA50 > EMA200',
+        contribution: weights.emaTrend.max,
+        reason: 'Bullish trend (Golden Cross)',
+        type: 'bullish'
       });
     } else if (indicators.ema50 < indicators.ema200) {
       score -= weights.emaTrend.max;
-      breakdown.push({ 
-        indicator: 'EMA Trend', 
-        value: 'EMA50 < EMA200', 
-        contribution: -weights.emaTrend.max, 
-        reason: 'Bearish trend (Death Cross)', 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'EMA Trend',
+        value: 'EMA50 < EMA200',
+        contribution: -weights.emaTrend.max,
+        reason: 'Bearish trend (Death Cross)',
+        type: 'bearish'
       });
     } else {
-      breakdown.push({ 
-        indicator: 'EMA Trend', 
-        value: 'EMA50 ≈ EMA200', 
-        contribution: 0, 
-        reason: 'Neutral', 
-        type: 'neutral' 
+      breakdown.push({
+        indicator: 'EMA Trend',
+        value: 'EMA50 ≈ EMA200',
+        contribution: 0,
+        reason: 'Neutral',
+        type: 'neutral'
       });
     }
 
     // Stochastic (±weights.stochastic.max points)
     if (indicators.stochK < weights.stochastic.oversold && indicators.stochK > indicators.stochD) {
       score += weights.stochastic.max;
-      breakdown.push({ 
-        indicator: 'Stochastic', 
-        value: indicators.stochK.toFixed(1), 
-        contribution: weights.stochastic.max, 
-        reason: 'Oversold + bullish crossover', 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'Stochastic',
+        value: indicators.stochK.toFixed(1),
+        contribution: weights.stochastic.max,
+        reason: 'Oversold + bullish crossover',
+        type: 'bullish'
       });
     } else if (indicators.stochK > weights.stochastic.overbought && indicators.stochK < indicators.stochD) {
       score -= weights.stochastic.max;
-      breakdown.push({ 
-        indicator: 'Stochastic', 
-        value: indicators.stochK.toFixed(1), 
-        contribution: -weights.stochastic.max, 
-        reason: 'Overbought + bearish crossover', 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'Stochastic',
+        value: indicators.stochK.toFixed(1),
+        contribution: -weights.stochastic.max,
+        reason: 'Overbought + bearish crossover',
+        type: 'bearish'
       });
     } else {
-      breakdown.push({ 
-        indicator: 'Stochastic', 
-        value: indicators.stochK.toFixed(1), 
-        contribution: 0, 
-        reason: 'Neutral', 
-        type: 'neutral' 
+      breakdown.push({
+        indicator: 'Stochastic',
+        value: indicators.stochK.toFixed(1),
+        contribution: 0,
+        reason: 'Neutral',
+        type: 'neutral'
       });
     }
 
     // Bollinger Bands (±weights.bollinger.max points)
     if (indicators.price < indicators.bollingerLower) {
       score += weights.bollinger.max;
-      breakdown.push({ 
-        indicator: 'Bollinger', 
-        value: 'Below lower', 
-        contribution: weights.bollinger.max, 
-        reason: 'Price below lower band', 
-        type: 'bullish' 
+      breakdown.push({
+        indicator: 'Bollinger',
+        value: 'Below lower',
+        contribution: weights.bollinger.max,
+        reason: 'Price below lower band',
+        type: 'bullish'
       });
     } else if (indicators.price > indicators.bollingerUpper) {
       score -= weights.bollinger.max;
-      breakdown.push({ 
-        indicator: 'Bollinger', 
-        value: 'Above upper', 
-        contribution: -weights.bollinger.max, 
-        reason: 'Price above upper band', 
-        type: 'bearish' 
+      breakdown.push({
+        indicator: 'Bollinger',
+        value: 'Above upper',
+        contribution: -weights.bollinger.max,
+        reason: 'Price above upper band',
+        type: 'bearish'
       });
     } else {
-      breakdown.push({ 
-        indicator: 'Bollinger', 
-        value: 'Within bands', 
-        contribution: 0, 
-        reason: 'Price within bands', 
-        type: 'neutral' 
+      breakdown.push({
+        indicator: 'Bollinger',
+        value: 'Within bands',
+        contribution: 0,
+        reason: 'Price within bands',
+        type: 'neutral'
       });
     }
 
     // Determine signal type based on thresholds
     let type = 'NEUTRAL';
     let confidence = 'LOW';
-    
-    if (score >= thresholds.strongBuy) { 
-      type = 'STRONG_BUY'; 
-      confidence = 'HIGH'; 
-    } else if (score >= thresholds.buy) { 
-      type = 'BUY'; 
-      confidence = 'MEDIUM'; 
-    } else if (score >= thresholds.buyWeak) { 
-      type = 'BUY'; 
-      confidence = 'LOW'; 
-    } else if (score <= thresholds.strongSell) { 
-      type = 'STRONG_SELL'; 
-      confidence = 'HIGH'; 
-    } else if (score <= thresholds.sell) { 
-      type = 'SELL'; 
-      confidence = 'MEDIUM'; 
-    } else if (score <= thresholds.sellWeak) { 
-      type = 'SELL'; 
-      confidence = 'LOW'; 
+
+    if (score >= thresholds.strongBuy) {
+      type = 'STRONG_BUY';
+      confidence = 'HIGH';
+    } else if (score >= thresholds.buy) {
+      type = 'BUY';
+      confidence = 'MEDIUM';
+    } else if (score >= thresholds.buyWeak) {
+      type = 'BUY';
+      confidence = 'LOW';
+    } else if (score <= thresholds.strongSell) {
+      type = 'STRONG_SELL';
+      confidence = 'HIGH';
+    } else if (score <= thresholds.sell) {
+      type = 'SELL';
+      confidence = 'MEDIUM';
+    } else if (score <= thresholds.sellWeak) {
+      type = 'SELL';
+      confidence = 'LOW';
     }
 
     return {

@@ -113,10 +113,10 @@ function getSchemaDocumentation() {
 
   for (const [section, fields] of Object.entries(ConfigSchema)) {
     lines.push(`[${section}]`);
-    
+
     for (const [field, rules] of Object.entries(fields)) {
       let line = `  ${field}: `;
-      
+
       switch (rules.type) {
         case 'number':
           line += `number (${rules.min} - ${rules.max}, default: ${rules.default})`;
@@ -130,10 +130,10 @@ function getSchemaDocumentation() {
         default:
           line += `${rules.type} (default: ${rules.default})`;
       }
-      
+
       lines.push(line);
     }
-    
+
     lines.push('');
   }
 

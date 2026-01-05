@@ -110,7 +110,7 @@ describe('TrailingStopPolicy', () => {
 
   test('calculates correct number of trailing steps', () => {
     const breakEvenROI = 1.3;
-    
+
     // Test at exactly 1 step beyond break-even
     const result1 = TrailingStopPolicy.nextStop({
       ...baseParams,
@@ -171,7 +171,7 @@ describe('TrailingStopPolicy', () => {
 
     // Long stop should be below entry
     assert.ok(stopLong < 50000, 'Long stop should be below entry');
-    
+
     // Short stop should be above entry
     assert.ok(stopShort > 50000, 'Short stop should be above entry');
   });
@@ -221,7 +221,7 @@ describe('TrailingStopPolicy', () => {
   test('applies correct trailing for high ROI positions', () => {
     const breakEvenROI = 1.3;
     const highROI = breakEvenROI + 1.0;  // Well above break-even
-    
+
     const result = TrailingStopPolicy.nextStop({
       ...baseParams,
       currentROI: highROI,

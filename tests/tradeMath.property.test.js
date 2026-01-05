@@ -10,7 +10,7 @@ const assert = require('node:assert');
 const DecimalMath = require('../src/lib/DecimalMath');
 
 describe('TradeMath Property-Based Tests', () => {
-  
+
   test('SL price is always less than entry for longs, more for shorts', () => {
     fc.assert(
       fc.property(
@@ -20,7 +20,7 @@ describe('TradeMath Property-Based Tests', () => {
         (entry, roi, leverage) => {
           const longSL = DecimalMath.calculateStopLossPrice('long', entry, roi, leverage);
           const shortSL = DecimalMath.calculateStopLossPrice('short', entry, roi, leverage);
-          
+
           return longSL < entry && shortSL > entry;
         }
       ),
@@ -37,7 +37,7 @@ describe('TradeMath Property-Based Tests', () => {
         (entry, roi, leverage) => {
           const longTP = DecimalMath.calculateTakeProfitPrice('long', entry, roi, leverage);
           const shortTP = DecimalMath.calculateTakeProfitPrice('short', entry, roi, leverage);
-          
+
           return longTP > entry && shortTP < entry;
         }
       ),
@@ -54,7 +54,7 @@ describe('TradeMath Property-Based Tests', () => {
         (entry, leverage, maintMargin) => {
           const longLiq = DecimalMath.calculateLiquidationPrice('long', entry, leverage, maintMargin);
           const longSL = DecimalMath.calculateStopLossPrice('long', entry, 50, leverage); // 50% ROI SL
-          
+
           // Liquidation should be beyond any reasonable SL
           return longLiq < longSL;
         }
@@ -72,7 +72,7 @@ describe('TradeMath Property-Based Tests', () => {
         (entryFee, exitFee, leverage) => {
           const be1 = DecimalMath.calculateFeeAdjustedBreakEven(entryFee, exitFee, leverage, 0);
           const be2 = DecimalMath.calculateFeeAdjustedBreakEven(entryFee, exitFee, leverage + 1, 0);
-          
+
           return be2 > be1;
         }
       ),
@@ -104,7 +104,7 @@ describe('TradeMath Property-Based Tests', () => {
         (currentSL, steps, movePercent) => {
           const longNewSL = DecimalMath.calculateTrailedStopLoss('long', currentSL, steps, movePercent);
           const shortNewSL = DecimalMath.calculateTrailedStopLoss('short', currentSL, steps, movePercent);
-          
+
           return longNewSL >= currentSL && shortNewSL <= currentSL;
         }
       ),
@@ -121,7 +121,7 @@ describe('TradeMath Property-Based Tests', () => {
         (balance, percent, leverage) => {
           const margin = DecimalMath.calculateMarginUsed(balance, percent);
           const value = DecimalMath.calculatePositionValue(margin, leverage);
-          
+
           // Account for floating point with decimal.js (should be exact)
           return Math.abs(value - margin * leverage) < 0.0001;
         }
@@ -154,7 +154,7 @@ describe('TradeMath Property-Based Tests', () => {
         (stopPrice, slippage) => {
           const longAdjusted = DecimalMath.calculateSlippageAdjustedStop('long', stopPrice, slippage);
           const shortAdjusted = DecimalMath.calculateSlippageAdjustedStop('short', stopPrice, slippage);
-          
+
           // Slippage should make longs lower and shorts higher
           return longAdjusted < stopPrice && shortAdjusted > stopPrice;
         }
@@ -171,7 +171,7 @@ describe('TradeMath Property-Based Tests', () => {
         (price, tickSize) => {
           const rounded = DecimalMath.roundToTickSize(price, tickSize);
           const ratio = rounded / tickSize;
-          
+
           // Should be within floating point precision of an integer
           return Math.abs(ratio - Math.round(ratio)) < 0.0001;
         }
@@ -191,7 +191,7 @@ describe('TradeMath Property-Based Tests', () => {
           const shortDiff = DecimalMath.calculatePriceDiff('short', entry, current);
           const longPnl = DecimalMath.calculateUnrealizedPnl(longDiff, size, 1);
           const shortPnl = DecimalMath.calculateUnrealizedPnl(shortDiff, size, 1);
-          
+
           if (current > entry) {
             return longPnl > 0 && shortPnl < 0;
           } else if (current < entry) {
@@ -213,7 +213,7 @@ describe('TradeMath Property-Based Tests', () => {
         fc.double({ min: 0.01, max: 1, noNaN: true }),     // move percent
         (currentSL, steps, movePercent) => {
           const newSL = DecimalMath.calculateTrailedStopLoss('long', currentSL, steps, movePercent);
-          
+
           // For LONG: new SL must be >= current SL (monotonic non-decreasing)
           return newSL >= currentSL;
         }
@@ -230,7 +230,7 @@ describe('TradeMath Property-Based Tests', () => {
         fc.double({ min: 0.01, max: 1, noNaN: true }),     // move percent
         (currentSL, steps, movePercent) => {
           const newSL = DecimalMath.calculateTrailedStopLoss('short', currentSL, steps, movePercent);
-          
+
           // For SHORT: new SL must be <= current SL (monotonic non-increasing)
           return newSL <= currentSL;
         }
@@ -248,15 +248,15 @@ describe('TradeMath Property-Based Tests', () => {
         fc.double({ min: 0, max: 1, noNaN: true }),          // buffer
         (entryFee, exitFee, leverage, buffer) => {
           const breakEvenROI = DecimalMath.calculateFeeAdjustedBreakEven(
-            entryFee, 
-            exitFee, 
-            leverage, 
+            entryFee,
+            exitFee,
+            leverage,
             buffer
           );
-          
+
           // Break-even ROI must be >= fees * leverage * 100
           const minRequiredROI = (entryFee + exitFee) * leverage * 100;
-          
+
           // Use small epsilon for floating point comparison
           return breakEvenROI >= minRequiredROI - 0.000001;
         }
@@ -274,19 +274,19 @@ describe('TradeMath Property-Based Tests', () => {
         fc.double({ min: 0.1, max: 1, noNaN: true }),        // buffer (positive)
         (entryFee, exitFee, leverage, buffer) => {
           const breakEvenWithBuffer = DecimalMath.calculateFeeAdjustedBreakEven(
-            entryFee, 
-            exitFee, 
-            leverage, 
+            entryFee,
+            exitFee,
+            leverage,
             buffer
           );
-          
+
           const breakEvenNoBuffer = DecimalMath.calculateFeeAdjustedBreakEven(
-            entryFee, 
-            exitFee, 
-            leverage, 
+            entryFee,
+            exitFee,
+            leverage,
             0
           );
-          
+
           // With buffer should always be higher than without
           return breakEvenWithBuffer > breakEvenNoBuffer;
         }
@@ -304,7 +304,7 @@ describe('TradeMath Property-Based Tests', () => {
         (currentROI, lastROI, stepPercent) => {
           const steps1 = DecimalMath.calculateTrailingSteps(currentROI, lastROI, stepPercent);
           const steps2 = DecimalMath.calculateTrailingSteps(currentROI, lastROI, stepPercent);
-          
+
           // Must be deterministic
           return steps1 === steps2;
         }
@@ -322,7 +322,7 @@ describe('TradeMath Property-Based Tests', () => {
         (entry, roiRisk, leverage) => {
           const longSL = DecimalMath.calculateStopLossPrice('long', entry, roiRisk, leverage);
           const shortSL = DecimalMath.calculateStopLossPrice('short', entry, roiRisk, leverage);
-          
+
           // LONG SL must always be below entry
           // SHORT SL must always be above entry
           return longSL < entry && shortSL > entry;
@@ -341,7 +341,7 @@ describe('TradeMath Property-Based Tests', () => {
         (entry, roiReward, leverage) => {
           const longTP = DecimalMath.calculateTakeProfitPrice('long', entry, roiReward, leverage);
           const shortTP = DecimalMath.calculateTakeProfitPrice('short', entry, roiReward, leverage);
-          
+
           // LONG TP must always be above entry
           // SHORT TP must always be below entry
           return longTP > entry && shortTP < entry;
@@ -361,7 +361,7 @@ describe('StopReplaceCoordinator Integration Tests', () => {
   test('Integration: Handles API 429 rate limiting and recovers', async () => {
     let attempts = 0;
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async (_params) => {
         attempts++;
         if (attempts <= 2) {
           const error = new Error('Too Many Requests');
@@ -371,13 +371,13 @@ describe('StopReplaceCoordinator Integration Tests', () => {
         return { data: { orderId: 'recovered_order' } };
       }
     };
-    
+
     const mockLog = () => {};
     const mockAlert = () => {};
-    
+
     const coordinator = new StopReplaceCoordinator(mockApi, mockLog, mockAlert);
     coordinator.baseDelay = 10; // Speed up test
-    
+
     const stopParams = {
       side: 'sell',
       symbol: 'XBTUSDTM',
@@ -388,9 +388,9 @@ describe('StopReplaceCoordinator Integration Tests', () => {
       size: '1',
       reduceOnly: true
     };
-    
+
     const result = await coordinator.replaceStopOrder('XBTUSDTM', stopParams);
-    
+
     assert.strictEqual(result.success, true);
     assert.strictEqual(attempts, 3);
     assert.strictEqual(result.orderId, 'recovered_order');
@@ -398,10 +398,10 @@ describe('StopReplaceCoordinator Integration Tests', () => {
 
   test('Integration: Temporary failure recovery with retry queue', async () => {
     let attempts = 0;
-    let failureCount = 3;
-    
+    const failureCount = 3;
+
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async (_params) => {
         attempts++;
         if (attempts <= failureCount) {
           throw new Error('Temporary network failure');
@@ -409,13 +409,13 @@ describe('StopReplaceCoordinator Integration Tests', () => {
         return { data: { orderId: `order_${attempts}` } };
       }
     };
-    
+
     const mockLog = () => {};
     const mockAlert = () => {};
-    
+
     const coordinator = new StopReplaceCoordinator(mockApi, mockLog, mockAlert);
     coordinator.baseDelay = 10; // Speed up test
-    
+
     const stopParams = {
       side: 'buy',
       symbol: 'ETHUSDTM',
@@ -426,9 +426,9 @@ describe('StopReplaceCoordinator Integration Tests', () => {
       size: '10',
       reduceOnly: true
     };
-    
+
     const result = await coordinator.replaceStopOrder('ETHUSDTM', stopParams);
-    
+
     assert.strictEqual(result.success, true);
     assert.strictEqual(attempts, failureCount + 1);
     assert.ok(result.orderId.startsWith('order_'));
@@ -437,13 +437,13 @@ describe('StopReplaceCoordinator Integration Tests', () => {
   test('Integration: Emergency close triggered after max retries protects position', async () => {
     let stopAttempts = 0;
     let emergencyExecuted = false;
-    
+
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async (_params) => {
         stopAttempts++;
         throw new Error('Persistent API failure');
       },
-      placeOrder: async (params) => {
+      placeOrder: async (_params) => {
         emergencyExecuted = true;
         // Verify emergency order properties
         assert.strictEqual(params.type, 'market');
@@ -451,14 +451,14 @@ describe('StopReplaceCoordinator Integration Tests', () => {
         return { data: { orderId: 'emergency_protective_order' } };
       }
     };
-    
+
     const mockLog = () => {};
     const mockAlert = () => {};
-    
+
     const coordinator = new StopReplaceCoordinator(mockApi, mockLog, mockAlert);
     coordinator.baseDelay = 5;
     coordinator.maxRetries = 3; // Reduce for faster test
-    
+
     const stopParams = {
       side: 'sell',
       symbol: 'XBTUSDTM',
@@ -469,7 +469,7 @@ describe('StopReplaceCoordinator Integration Tests', () => {
       size: '1',
       reduceOnly: true
     };
-    
+
     try {
       await coordinator.replaceStopOrder('XBTUSDTM', stopParams);
       assert.fail('Should have thrown error after emergency close');
@@ -483,19 +483,19 @@ describe('StopReplaceCoordinator Integration Tests', () => {
   test('Integration: Retry queue protects position during concurrent updates', async () => {
     let orderCounter = 0;
     const mockApi = {
-      placeStopOrder: async (params) => {
+      placeStopOrder: async (_params) => {
         // Simulate realistic API delay
         await new Promise(resolve => setTimeout(resolve, 30));
         orderCounter++;
         return { data: { orderId: `order_${orderCounter}_${params.stopPrice}` } };
       }
     };
-    
+
     const mockLog = () => {};
     const mockAlert = () => {};
-    
+
     const coordinator = new StopReplaceCoordinator(mockApi, mockLog, mockAlert);
-    
+
     // Fire off 3 concurrent stop updates
     const promises = [];
     for (let i = 1; i <= 3; i++) {
@@ -511,17 +511,17 @@ describe('StopReplaceCoordinator Integration Tests', () => {
       };
       promises.push(coordinator.replaceStopOrder('XBTUSDTM', stopParams));
     }
-    
+
     const results = await Promise.all(promises);
-    
+
     // All should succeed
     results.forEach(result => {
       assert.strictEqual(result.success, true);
     });
-    
+
     // Orders should be placed sequentially
     assert.strictEqual(orderCounter, 3);
-    
+
     // Final order should be the last requested
     assert.ok(coordinator.currentOrderId.includes('50300'));
   });

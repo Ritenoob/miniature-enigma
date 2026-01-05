@@ -4,8 +4,8 @@
 const Decimal = require('decimal.js');
 
 // Configure Decimal.js for financial precision
-Decimal.set({ 
-  precision: 20, 
+Decimal.set({
+  precision: 20,
   rounding: Decimal.ROUND_HALF_UP,
   toExpNeg: -9,
   toExpPos: 9
@@ -59,7 +59,7 @@ class DecimalMath {
   static calculatePriceDiff(side, entryPrice, currentPrice) {
     const entry = new Decimal(entryPrice);
     const current = new Decimal(currentPrice);
-    const result = side === 'long' 
+    const result = side === 'long'
       ? current.minus(entry)
       : entry.minus(current);
     return result.toNumber();
@@ -136,11 +136,11 @@ class DecimalMath {
     const roi = new Decimal(roiRisk);
     const lev = new Decimal(leverage);
     const pricePercent = roi.dividedBy(lev).dividedBy(100);
-    
+
     const result = side === 'long'
       ? entry.times(new Decimal(1).minus(pricePercent))
       : entry.times(new Decimal(1).plus(pricePercent));
-    
+
     return result.toNumber();
   }
 
@@ -154,11 +154,11 @@ class DecimalMath {
     const roi = new Decimal(roiReward);
     const lev = new Decimal(leverage);
     const pricePercent = roi.dividedBy(lev).dividedBy(100);
-    
+
     const result = side === 'long'
       ? entry.times(new Decimal(1).plus(pricePercent))
       : entry.times(new Decimal(1).minus(pricePercent));
-    
+
     return result.toNumber();
   }
 
@@ -171,14 +171,14 @@ class DecimalMath {
     const entry = new Decimal(entryPrice);
     const lev = new Decimal(leverage);
     const maintMargin = new Decimal(maintMarginPercent);
-    
+
     const maintMarginFactor = new Decimal(1).plus(maintMargin.dividedBy(100));
     const leverageImpact = entry.dividedBy(lev).times(maintMarginFactor);
-    
+
     const result = side === 'long'
       ? entry.minus(leverageImpact)
       : entry.plus(leverageImpact);
-    
+
     return result.toNumber();
   }
 
@@ -190,11 +190,11 @@ class DecimalMath {
     const stop = new Decimal(stopPrice);
     const slippage = new Decimal(slippagePercent);
     const slippageFactor = slippage.dividedBy(100);
-    
+
     const result = side === 'long'
       ? stop.times(new Decimal(1).minus(slippageFactor))
       : stop.times(new Decimal(1).plus(slippageFactor));
-    
+
     return result.toNumber();
   }
 
@@ -206,9 +206,9 @@ class DecimalMath {
     const current = new Decimal(currentROI);
     const last = new Decimal(lastTrailedROI);
     const step = new Decimal(stepPercent);
-    
+
     if (current.lte(last)) return 0;
-    
+
     const result = current.minus(last).dividedBy(step).floor();
     return result.toNumber();
   }
@@ -222,13 +222,13 @@ class DecimalMath {
     const sl = new Decimal(currentSL);
     const stepsDecimal = new Decimal(steps);
     const move = new Decimal(movePercent);
-    
+
     const totalMove = stepsDecimal.times(move).dividedBy(100);
-    
+
     const result = side === 'long'
       ? sl.times(new Decimal(1).plus(totalMove))
       : sl.times(new Decimal(1).minus(totalMove));
-    
+
     return result.toNumber();
   }
 
@@ -249,7 +249,7 @@ class DecimalMath {
    */
   static calculateAutoLeverage(atrPercent, riskMultiplier, tiers) {
     const atr = new Decimal(atrPercent);
-    
+
     let baseLeverage = 3; // Default to safest
     for (const tier of tiers) {
       if (atr.lt(tier.maxVolatility)) {
@@ -257,12 +257,12 @@ class DecimalMath {
         break;
       }
     }
-    
+
     // Apply risk multiplier and clamp between 1-100
     const mult = new Decimal(riskMultiplier);
     const adjustedLeverage = new Decimal(baseLeverage).times(mult).round();
     const clamped = Decimal.max(1, Decimal.min(100, adjustedLeverage));
-    
+
     return clamped.toNumber();
   }
 
@@ -272,13 +272,13 @@ class DecimalMath {
   static roundToTickSize(price, tickSize) {
     const priceDecimal = new Decimal(price);
     const tick = new Decimal(tickSize);
-    
+
     const rounded = priceDecimal.dividedBy(tick).round().times(tick);
-    
+
     // Determine decimals from tick size
     const tickStr = tick.toString();
     const decimals = tickStr.includes('.') ? tickStr.split('.')[1].length : 0;
-    
+
     return rounded.toDecimalPlaces(decimals).toNumber();
   }
 
@@ -288,7 +288,7 @@ class DecimalMath {
   static roundToLotSize(lots, lotSize) {
     const lotsDecimal = new Decimal(lots);
     const lotSizeDecimal = new Decimal(lotSize);
-    
+
     const result = lotsDecimal.dividedBy(lotSizeDecimal).floor().times(lotSizeDecimal);
     return result.toNumber();
   }

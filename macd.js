@@ -2,22 +2,22 @@
 
 /**
  * MACDIndicator Class
- * 
+ *
  * Incremental MACD calculator using the standard EMA formula.
  * Designed for real-time/incremental updates (O(1) per new price).
- * 
+ *
  * Default parameters (configurable):
  *   - fastPeriod   = 12
  *   - slowPeriod   = 26
  *   - signalPeriod = 9
- * 
+ *
  * Returns on each update:
  *   {
  *     macd:      number | null,  // MACD line (fast EMA - slow EMA)
  *     signal:    number | null,  // Signal line (EMA of MACD)
  *     histogram: number | null   // macd - signal
  *   }
- * 
+ *
  * Values are null until the required history is built.
  */
 
@@ -31,7 +31,7 @@ class MACDIndicator {
   constructor({
     fastPeriod = 12,
     slowPeriod = 26,
-    signalPeriod = 9,
+    signalPeriod = 9
   } = {}) {
     if (fastPeriod <= 0 || slowPeriod <= 0 || signalPeriod <= 0) {
       throw new Error('Periods must be positive integers');
@@ -62,7 +62,7 @@ class MACDIndicator {
   /**
    * Bootstrap the indicator with historical closing prices.
    * This is optional but recommended to avoid long warm-up delay.
-   * 
+   *
    * @param {number[]} closes - Array of historical closing prices (oldest first)
    */
   bootstrap(closes) {
@@ -98,7 +98,7 @@ class MACDIndicator {
 
   /**
    * Update with a new closing price
-   * 
+   *
    * @param {number} close - Latest closing price
    * @returns {{macd: number|null, signal: number|null, histogram: number|null}}
    */
@@ -163,7 +163,7 @@ class MACDIndicator {
     return {
       macd: this.macd,
       signal: this.signal,
-      histogram: this.histogram,
+      histogram: this.histogram
     };
   }
 
