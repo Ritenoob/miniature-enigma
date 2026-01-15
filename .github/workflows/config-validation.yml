@@ -1,0 +1,117 @@
+# Configuration Validation Workflow
+# This workflow checks for potential configuration conflicts and provides helpful warnings.
+# It runs as a non-blocking check to help developers identify issues early.
+
+name: Config Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-config:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    
+    # This job never fails the build - it only provides warnings
+    continue-on-error: true
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for CodeQL configuration conflicts
+        id: codeql-check
+        run: |
+          echo "::notice::Checking for CodeQL configuration conflicts..."
+          
+          # Check if advanced CodeQL workflow exists
+          if [ -f ".github/workflows/codeql.yml" ]; then
+            echo "✅ Advanced CodeQL workflow found at .github/workflows/codeql.yml"
+            echo "codeql_advanced=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::Advanced CodeQL workflow not found at .github/workflows/codeql.yml"
+            echo "codeql_advanced=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate workflow files
+        run: |
+          echo "::notice::Validating workflow files..."
+          
+          # Check for common workflow issues
+          for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+            if [ -f "$workflow" ]; then
+              echo "Checking $workflow..."
+              
+              # Basic YAML syntax check (check if file is readable)
+              if ! cat "$workflow" > /dev/null 2>&1; then
+                echo "::error::Failed to read $workflow - check file permissions"
+              fi
+            fi
+          done
+          
+          echo "✅ Workflow file validation complete"
+
+      - name: Check documentation links
+        run: |
+          echo "::notice::Checking documentation..."
+          
+          # Check if key documentation files exist
+          docs=("README.md" "docs/TROUBLESHOOTING.md" "docs/SECURITY_SCANNING.md")
+          
+          for doc in "${docs[@]}"; do
+            if [ -f "$doc" ]; then
+              echo "✅ Found: $doc"
+            else
+              echo "::warning::Missing documentation: $doc"
+            fi
+          done
+
+      - name: Provide configuration guidance
+        if: steps.codeql-check.outputs.codeql_advanced == 'true'
+        run: |
+          echo "::notice::=========================================="
+          echo "::notice::CodeQL Advanced Setup Detected"
+          echo "::notice::=========================================="
+          echo "::notice::"
+          echo "::notice::This repository uses CodeQL Advanced configuration."
+          echo "::notice::"
+          echo "::notice::⚠️ IMPORTANT: GitHub's default CodeQL setup must be DISABLED"
+          echo "::notice::   for the advanced workflow to function properly."
+          echo "::notice::"
+          echo "::notice::If you see this error:"
+          echo "::notice::  'CodeQL analyses from advanced configurations cannot be"
+          echo "::notice::   processed when the default setup is enabled'"
+          echo "::notice::"
+          echo "::notice::Follow these steps:"
+          echo "::notice::  1. Go to Settings → Code security and analysis"
+          echo "::notice::  2. Find 'Code scanning' section"
+          echo "::notice::  3. Click ⋯ menu → Disable CodeQL"
+          echo "::notice::  4. Re-run the failed workflow"
+          echo "::notice::"
+          echo "::notice::📚 For detailed instructions, see:"
+          echo "::notice::   - README.md (Security Scanning Setup section)"
+          echo "::notice::   - docs/TROUBLESHOOTING.md"
+          echo "::notice::   - docs/SECURITY_SCANNING.md"
+          echo "::notice::"
+          echo "::notice::=========================================="
+
+      - name: Summary
+        run: |
+          echo "### Configuration Validation Summary ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This is an informational check that helps identify potential configuration issues." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Checks Performed:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ CodeQL workflow configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Workflow file validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Documentation presence" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📚 Documentation Resources:" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security Scanning Setup (README.md)](../README.md#-security-scanning-setup)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Troubleshooting Guide](../docs/TROUBLESHOOTING.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security Scanning Details](../docs/SECURITY_SCANNING.md)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note:** This check does not fail your build. It only provides warnings and guidance." >> $GITHUB_STEP_SUMMARY
