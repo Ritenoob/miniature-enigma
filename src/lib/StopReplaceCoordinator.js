@@ -114,8 +114,10 @@ class StopReplaceCoordinator {
         // Step 2: Place new stop order
         this.state = 'PLACING';
         this.broadcastLog('info', `[${symbol}] Placing new stop order at ${sanitizedParams.stopPrice}`);
+        this.broadcastLog('info', `[${symbol}] Stop payload: ${JSON.stringify(sanitizedParams)}`);
         
         const result = await this.api.placeStopOrder(sanitizedParams);
+        this.broadcastLog('info', `[${symbol}] Stop response: ${JSON.stringify(result)}`);
         
         if (!result.data || !result.data.orderId) {
           throw new Error('API returned success but no orderId');

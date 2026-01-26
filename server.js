@@ -43,6 +43,9 @@ const { validateConfig } = require('./src/lib/ConfigSchema');
 const SecureLogger = require('./src/lib/SecureLogger');
 const OrderValidator = require('./src/lib/OrderValidator');
 const SignalGenerator = require('./src/lib/SignalGenerator');
+const { MarketStateStore, AccountStateStore } = require('./src/lib/StateStores');
+const StopManager = require('./src/lib/StopManager');
+const Reconciler = require('./src/lib/Reconciler');
 // Note: StopOrderStateMachine and EventBus are initialized per-position/global
 
 // Initialize SignalGenerator with config (safe to call multiple times)
@@ -81,6 +84,9 @@ const CONFIG = {
     
     // Slippage & Fees
     SLIPPAGE_BUFFER_PERCENT: 0.02,    // 0.02% slippage buffer on stops
+    STOP_PRICE_TYPE: 'MP',            // Mark Price stop enforcement
+    STOP_UPDATE_MIN_INTERVAL_MS: 1500,// Debounce stop updates
+    STOP_MIN_MOVE_TICKS: 2,           // Minimum stop move in ticks
     MAKER_FEE: 0.0002,                // 0.02% maker fee
     TAKER_FEE: 0.0006,                // 0.06% taker fee
     
@@ -203,9 +209,14 @@ const fundingRates = {};             // Symbol -> { rate, nextFundingTime }
 const contractSpecs = {};            // Symbol -> { tickSize, lotSize, multiplier, maintMargin }
 const wsClients = new Set();         // Connected dashboard clients
 const positionMonitor = new EventEmitter();
+const marketStateStore = new MarketStateStore();
+const accountStateStore = new AccountStateStore();
 
 let currentTimeframe = '5min';
 let accountBalance = 0;
+let tradingHalted = false;
+let stopManager;
+let reconciler;
 
 // ============================================================================
 // V3.5.2: PRECISION-SAFE MATH UTILITIES USING DECIMAL.JS
@@ -690,21 +701,16 @@ class RetryQueueManager {
   }
 
   async executeStopLossUpdate(op) {
-    // Cancel existing stop
-    if (op.existingOrderId) {
-      try {
-        await kucoinAPI.cancelStopOrder(op.existingOrderId);
-      } catch (e) {
-        // Order might already be cancelled
-      }
+    if (!stopManager) {
+      throw new Error('StopManager not initialized');
     }
-    // Place new stop
-    await kucoinAPI.placeStopOrder(op.params);
+    await stopManager.replaceStopLoss(op.params);
   }
 
   async handleCriticalStopFailure(op) {
     broadcastLog('error', `[CRITICAL] Stop loss update failed for ${op.symbol}. Position may be unprotected!`);
     broadcastAlert('error', `CRITICAL: ${op.symbol} stop loss failed. Consider manual intervention.`);
+    tradingHalted = true;
     
     // Notify the position manager
     const position = activePositions.get(op.symbol);
@@ -889,6 +895,7 @@ class MarketDataManager {
       this.candles.shift();
     }
     this.currentPrice = candle.close;
+    marketStateStore.updateFromCandle(this.symbol, candle);
   }
 
   loadCandles(klineData) {
@@ -905,6 +912,7 @@ class MarketDataManager {
     
     if (this.candles.length > 0) {
       this.currentPrice = this.candles[this.candles.length - 1].close;
+      marketStateStore.updateFromCandle(this.symbol, this.candles[this.candles.length - 1]);
     }
   }
 
@@ -914,11 +922,12 @@ class MarketDataManager {
     if (tickerData.bestAskPrice) this.bestAsk = parseFloat(tickerData.bestAskPrice);
     if (tickerData.priceChgPct) this.priceChange24h = parseFloat(tickerData.priceChgPct) * 100;
     if (tickerData.vol24h) this.volume24h = parseFloat(tickerData.vol24h);
+    marketStateStore.updateFromTicker(this.symbol, tickerData);
   }
 
   getIndicators() {
     if (this.candles.length < 50) {
-      return {
+      const indicators = {
         price: this.currentPrice,
         rsi: 50,
         williamsR: -50,
@@ -936,6 +945,8 @@ class MarketDataManager {
         stochK: 50,
         stochD: 50
       };
+      marketStateStore.updateIndicators(this.symbol, indicators);
+      return indicators;
     }
 
     const closes = this.candles.map(c => c.close);
@@ -948,7 +959,7 @@ class MarketDataManager {
     const atr = TechnicalIndicators.calculateATR(highs, lows, closes, 14);
     const atrPercent = TechnicalIndicators.calculateATRPercent(highs, lows, closes, 14);
 
-    return {
+    const indicators = {
       price: this.currentPrice,
       rsi: TechnicalIndicators.calculateRSI(closes, 14),
       williamsR: TechnicalIndicators.calculateWilliamsR(highs, lows, closes, 14),
@@ -966,6 +977,8 @@ class MarketDataManager {
       stochK: stochData.k,
       stochD: stochData.d
     };
+    marketStateStore.updateIndicators(this.symbol, indicators);
+    return indicators;
   }
 
   generateSignal() {
@@ -1284,50 +1297,22 @@ class PositionManager {
    */
   async updateStopLossOrder() {
     try {
-      const specs = contractSpecs[this.symbol] || { tickSize: 0.1 };
-      
-      // V3.5: Apply slippage buffer
-      const slippageAdjustedSL = TradeMath.calculateSlippageAdjustedStop(
-        this.side,
-        this.currentSL,
-        CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT
-      );
-      
-      const roundedSL = TradeMath.roundToTickSize(slippageAdjustedSL, specs.tickSize);
-
-      // Cancel existing SL order
-      const oldOrderId = this.slOrderId;
-      if (oldOrderId) {
-        try {
-          await this.api.cancelStopOrder(oldOrderId);
-        } catch (e) {
-          // Order might already be cancelled or filled
-        }
-      }
-
-      // V3.5.2: Build and validate stop order params
-      const slSide = this.side === 'long' ? 'sell' : 'buy';
-      let slParams = {
-        clientOid: `sl_${this.symbol}_${Date.now()}`,
-        side: slSide,
+      const result = await stopManager.replaceStopLoss({
         symbol: this.symbol,
-        type: 'market',
-        stop: this.side === 'long' ? 'down' : 'up',
-        stopPrice: roundedSL.toString(),
-        stopPriceType: 'TP',
-        size: this.remainingSize.toString(),
-        reduceOnly: true
-      };
-      
-      // V3.5.2: Validate and sanitize order
-      OrderValidator.validateStopOrder(slParams);
-      slParams = OrderValidator.sanitize(slParams, 'stop');
+        side: this.side,
+        size: this.remainingSize,
+        stopPrice: this.currentSL,
+        positionId: this.entryOrderId || this.symbol,
+        existingOrderId: this.slOrderId
+      });
 
-      const result = await this.api.placeStopOrder(slParams);
-      if (result.data) {
-        this.slOrderId = result.data.orderId;
+      if (result && result.orderId) {
+        this.slOrderId = result.orderId;
         this.stopOrderFailed = false;
-        broadcastLog('success', `[${this.symbol}] SL order updated: ${roundedSL.toFixed(2)} (with ${CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT}% slippage buffer)`);
+        broadcastLog(
+          'success',
+          `[${this.symbol}] SL order updated: ${result.stopPrice.toFixed(2)} (mark price stop)`
+        );
       }
     } catch (error) {
       broadcastLog('error', `[${this.symbol}] Failed to update SL order: ${error.message}`);
@@ -1336,17 +1321,13 @@ class PositionManager {
       retryQueueManager.add({
         type: 'update_stop_loss',
         symbol: this.symbol,
-        existingOrderId: this.slOrderId,
         params: {
-          clientOid: `sl_${this.symbol}_${Date.now()}`,
-          side: this.side === 'long' ? 'sell' : 'buy',
           symbol: this.symbol,
-          type: 'market',
-          stop: this.side === 'long' ? 'down' : 'up',
-          stopPrice: this.currentSL.toString(),
-          stopPriceType: 'TP',
-          size: this.remainingSize.toString(),
-          reduceOnly: true
+          side: this.side,
+          size: this.remainingSize,
+          stopPrice: this.currentSL,
+          positionId: this.entryOrderId || this.symbol,
+          existingOrderId: this.slOrderId
         }
       });
     }
@@ -1450,6 +1431,7 @@ class PositionManager {
         
         // Remove from active positions
         activePositions.delete(this.symbol);
+        accountStateStore.clearPosition(this.symbol);
         savePositions();
         broadcastPositions();
       }
@@ -1518,6 +1500,7 @@ function loadPositions() {
         if (posData.status !== 'closed') {
           const manager = new PositionManager(posData, kucoinAPI);
           activePositions.set(symbol, manager);
+          accountStateStore.recordPosition(symbol, manager.toJSON());
           broadcastLog('info', `[RESTORE] Loaded position: ${symbol} ${posData.side} @ ${posData.entryPrice}`);
         }
       }
@@ -1562,6 +1545,7 @@ function broadcastMarketData(symbol) {
   const indicators = manager.getIndicators();
   const signal = manager.generateSignal();
   const marketData = manager.getMarketData();
+  const normalizedTick = marketStateStore.getNormalizedTick(symbol);
   
   // V3.5: Include recommended leverage
   const recommendedLeverage = manager.getRecommendedLeverage(1.0);
@@ -1576,6 +1560,7 @@ function broadcastMarketData(symbol) {
     fundingRate: fundingRates[symbol] || { rate: 0, predictedRate: 0 },
     contractSpecs: contractSpecs[symbol] || null,
     recommendedLeverage,
+    normalizedTick,
     tradingConfig: {
       slROI: CONFIG.TRADING.INITIAL_SL_ROI,
       tpROI: CONFIG.TRADING.INITIAL_TP_ROI,
@@ -1639,6 +1624,29 @@ function broadcastInitialState(ws) {
     }
   }));
 }
+
+stopManager = new StopManager({
+  api: kucoinAPI,
+  accountStateStore,
+  contractSpecs,
+  config: CONFIG,
+  tradeMath: TradeMath,
+  broadcastLog,
+  broadcastAlert
+});
+stopManager.validateConfig();
+
+reconciler = new Reconciler({
+  api: kucoinAPI,
+  accountStateStore,
+  stopManager,
+  activePositions,
+  broadcastLog,
+  broadcastAlert,
+  haltTrading: () => {
+    tradingHalted = true;
+  }
+});
 
 // ============================================================================
 // DATA FETCHING
@@ -1712,6 +1720,12 @@ async function fetchOrderBook(symbol) {
         asks: response.data.asks || [],
         timestamp: Date.now()
       };
+      marketStateStore.updateFromOrderBook(symbol, {
+        bids: orderBooks[symbol].bids,
+        asks: orderBooks[symbol].asks,
+        bestBid: orderBooks[symbol].bids?.[0]?.[0],
+        bestAsk: orderBooks[symbol].asks?.[0]?.[0]
+      });
       return orderBooks[symbol];
     }
   } catch (error) {
@@ -1729,6 +1743,7 @@ async function fetchFundingRate(symbol) {
         predictedRate: parseFloat(response.data.predictedValue || 0),
         timestamp: Date.now()
       };
+      marketStateStore.updateFromFunding(symbol, fundingRates[symbol]);
       return fundingRates[symbol];
     }
   } catch (error) {
@@ -1792,6 +1807,10 @@ async function initializeAllSymbols() {
 // V3.5: ORDER EXECUTION WITH ENHANCED CALCULATIONS
 // ============================================================================
 async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.POSITION_SIZE_PERCENT, leverage = CONFIG.TRADING.DEFAULT_LEVERAGE) {
+  if (tradingHalted) {
+    broadcastLog('error', 'Trading halted by HealthGate. Entry blocked.');
+    return { success: false, error: 'Trading halted' };
+  }
   // Check max positions
   if (activePositions.size >= CONFIG.TRADING.MAX_POSITIONS) {
     broadcastLog('error', `Max positions (${CONFIG.TRADING.MAX_POSITIONS}) reached. Cannot open new position.`);
@@ -1924,41 +1943,33 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
     const entryOrderId = entryResult.data.orderId;
     broadcastLog('success', `[${symbol}] Entry order placed: ${entryOrderId}`);
 
-    // V3.5.2: Place SL order with slippage buffer and validation
-    const slippageAdjustedSL = TradeMath.calculateSlippageAdjustedStop(side, roundedSL, CONFIG.TRADING.SLIPPAGE_BUFFER_PERCENT);
-    const finalSL = TradeMath.roundToTickSize(slippageAdjustedSL, tickSize);
-    
-    const slSide = side === 'long' ? 'sell' : 'buy';
-    let slParams = {
-      clientOid: `sl_${symbol}_${Date.now()}`,
-      side: slSide,
-      symbol: symbol,
-      type: 'market',
-      stop: side === 'long' ? 'down' : 'up',
-      stopPrice: finalSL.toString(),
-      stopPriceType: 'TP',
-      size: size.toString(),
-      reduceOnly: true
-    };
-    
-    // V3.5.2: Validate and sanitize stop order
-    OrderValidator.validateStopOrder(slParams);
-    slParams = OrderValidator.sanitize(slParams, 'stop');
-
     let slOrderId = null;
     try {
-      const slResult = await kucoinAPI.placeStopOrder(slParams);
-      if (slResult.data) {
-        slOrderId = slResult.data.orderId;
-        broadcastLog('success', `[${symbol}] SL order placed: ${slOrderId} (with slippage buffer)`);
+      const slResult = await stopManager.replaceStopLoss({
+        symbol,
+        side,
+        size,
+        stopPrice: roundedSL,
+        positionId: entryOrderId,
+        existingOrderId: null
+      });
+      if (slResult && slResult.orderId) {
+        slOrderId = slResult.orderId;
+        broadcastLog('success', `[${symbol}] SL order placed: ${slOrderId} (mark price stop)`);
       }
     } catch (slError) {
       broadcastLog('warn', `[${symbol}] Failed to place SL order: ${slError.message}`);
-      // Add to retry queue
       retryQueueManager.add({
         type: 'update_stop_loss',
         symbol: symbol,
-        params: slParams
+        params: {
+          symbol,
+          side,
+          size,
+          stopPrice: roundedSL,
+          positionId: entryOrderId,
+          existingOrderId: null
+        }
       });
     }
 
@@ -2018,6 +2029,7 @@ async function executeEntry(symbol, side, positionSizePercent = CONFIG.TRADING.P
 
     const manager = new PositionManager(positionData, kucoinAPI);
     activePositions.set(symbol, manager);
+    accountStateStore.recordPosition(symbol, manager.toJSON());
     savePositions();
     broadcastPositions();
 
@@ -2163,7 +2175,9 @@ app.get('/health', (req, res) => {
     symbols: Object.keys(marketManagers).length,
     positions: activePositions.size,
     clients: wsClients.size,
-    retryQueueLength: retryQueueManager.queue.length
+    retryQueueLength: retryQueueManager.queue.length,
+    tradingHalted,
+    healthStatus: accountStateStore.getHealthStatus()
   });
 });
 
@@ -2416,7 +2430,8 @@ function startIntervals() {
   intervalRefs.push(setInterval(async () => {
     for (const [symbol, manager] of activePositions.entries()) {
       if (marketManagers[symbol]) {
-        const price = marketManagers[symbol].currentPrice;
+        const normalizedTick = marketStateStore.getNormalizedTick(symbol);
+        const price = normalizedTick?.markPrice || marketManagers[symbol].currentPrice;
         if (price > 0) {
           await manager.updatePrice(price);
         }
@@ -2443,7 +2458,7 @@ function startIntervals() {
     retryQueueManager.process();
   }, 10000));
 
-  // Sync positions from KuCoin every minute
+  // Sync positions and reconcile drift every minute
   intervalRefs.push(setInterval(async () => {
     try {
       const response = await kucoinAPI.getAllPositions();
@@ -2461,6 +2476,9 @@ function startIntervals() {
             }
           }
         }
+      }
+      if (reconciler) {
+        await reconciler.reconcileAll();
       }
     } catch (error) {
       // Silently handle sync errors
