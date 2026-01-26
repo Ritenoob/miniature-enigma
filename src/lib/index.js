@@ -9,6 +9,9 @@ const { ConfigSchema, validateConfig, validatePartialConfig, getSchemaDocumentat
 const SecureLogger = require('./SecureLogger');
 const { TradingEventBus, getEventBus } = require('./EventBus');
 const { PingBudgetManager, AdaptiveTokenBucket, WS_CONFIG } = require('./PingBudgetManager');
+const { MarketStateStore, AccountStateStore } = require('./StateStores');
+const StopManager = require('./StopManager');
+const Reconciler = require('./Reconciler');
 
 module.exports = {
   // Math utilities
@@ -34,5 +37,15 @@ module.exports = {
   // Rate limiting
   PingBudgetManager,
   AdaptiveTokenBucket,
-  WS_CONFIG
+  WS_CONFIG,
+
+  // State stores
+  MarketStateStore,
+  AccountStateStore,
+
+  // Stop ownership
+  StopManager,
+
+  // Reconciler
+  Reconciler
 };
